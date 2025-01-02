@@ -1,11 +1,20 @@
+<<<<<<< HEAD
+=======
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+>>>>>>> 4803aa1b984f13b4f75614e399f1ab620a3f7c97
 # Binaries for programs and plugins
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+<<<<<<< HEAD
 bin/*
 Dockerfile.cross
+=======
+>>>>>>> 4803aa1b984f13b4f75614e399f1ab620a3f7c97
 
 # Test binary, built with `go test -c`
 *.test
@@ -13,6 +22,7 @@ Dockerfile.cross
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+<<<<<<< HEAD
 # Go workspace file
 go.work
 
@@ -25,3 +35,14 @@ go.work
 *.swp
 *.swo
 *~
+=======
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+>>>>>>> 4803aa1b984f13b4f75614e399f1ab620a3f7c97
