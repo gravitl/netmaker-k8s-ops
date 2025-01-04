@@ -30,6 +30,8 @@ import (
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/gravitl/netmaker-k8s-ops/internal/proxy"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -39,6 +41,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	networkv1 "github.com/gravitl/netmaker-k8s-ops/api/v1"
+	"github.com/gravitl/netmaker-k8s-ops/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -50,6 +55,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
+	utilruntime.Must(networkv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -145,6 +151,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&controller.NetmakerOpsReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "NetmakerOps")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -159,7 +172,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	setupLog.Info("starting k8s proxy server")
 	wg.Add(1)
-	go startK8sProxy(ctx, wg)
+	go proxy.StartK8sProxy(ctx, wg)
 	setupLog.Info("starting manager")
 	wg.Add(1)
 	go func() {

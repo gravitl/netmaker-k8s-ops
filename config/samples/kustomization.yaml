@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+#- network_v1_netmaker-k8s.yaml
+- network_v1_netmakerops.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

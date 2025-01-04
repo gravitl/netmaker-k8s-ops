@@ -1,13 +1,16 @@
----
+# permissions for end users to edit netmaker-k8s.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: manager-role
+  labels:
+    app.kubernetes.io/name: netmaker-k8s-ops
+    app.kubernetes.io/managed-by: kustomize
+  name: netmaker-k8s-editor-role
 rules:
 - apiGroups:
   - network.netmaker.io
   resources:
-  - netmakerops
+  - netmaker-k8s
   verbs:
   - create
   - delete
@@ -19,14 +22,6 @@ rules:
 - apiGroups:
   - network.netmaker.io
   resources:
-  - netmakerops/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - network.netmaker.io
-  resources:
-  - netmakerops/status
+  - netmaker-k8s/status
   verbs:
   - get
-  - patch
-  - update

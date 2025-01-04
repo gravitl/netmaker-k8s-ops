@@ -1,4 +1,4 @@
-package main
+package proxy
 
 import (
 	"context"
@@ -31,7 +31,7 @@ func GinLogger() gin.HandlerFunc {
 	}
 }
 
-func startK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
+func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	zlog := zap.New(zap.UseDevMode(true))
 
@@ -88,7 +88,7 @@ func startK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 	})
 
 	srv := &http.Server{
-		Addr:    ":443",
+		Addr:    ":8085",
 		Handler: router,
 	}
 	// Start the HTTP server

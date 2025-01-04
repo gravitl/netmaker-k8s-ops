@@ -1,0 +1,9 @@
+apiVersion: network.netmaker.io/v1
+kind: NetmakerOps
+metadata:
+  labels:
+    app.kubernetes.io/name: netmaker-k8s-ops
+    app.kubernetes.io/managed-by: kustomize
+  name: netmakerops-sample
+spec:
+  # TODO(user): Add fields here
