@@ -27,3 +27,8 @@ resources:
 - netmaker-k8s_editor_role.yaml
 - netmaker-k8s_viewer_role.yaml
 
+patches:
+  - path: role_patch.yaml
+    target:
+      kind: ClusterRole
+      name: manager-role
