@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -11,7 +12,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gravitl/netmaker-k8s-ops/conf"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
 
@@ -34,11 +37,16 @@ func GinLogger() gin.HandlerFunc {
 func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	zlog := zap.New(zap.UseDevMode(true))
-
-	// Get in-cluster Kubernetes configuration
-	config, err := rest.InClusterConfig()
+	var config *rest.Config
+	var err error
+	if conf.InClusterCfg() {
+		// Get in-cluster Kubernetes configuration
+		config, err = rest.InClusterConfig()
+	} else {
+		config, err = clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
+	}
 	if err != nil {
-		zlog.Error(err, "Failed to get in-cluster config")
+		zlog.Error(err, "Failed to get cluster config")
 		os.Exit(1)
 	}
 
@@ -64,6 +72,9 @@ func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		// You can customize the response here if needed
 		return nil
+	}
+	proxy.Transport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	//gin.SetMode(gin.ReleaseMode)
 	gin.SetMode(gin.DebugMode)
@@ -95,7 +106,7 @@ func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 	zlog.Info("Starting Kubernetes API proxy", "addr", srv.Addr)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			zlog.Error(err, "failed to start proxt server")
+			zlog.Error(err, "failed to start proxy server")
 			os.Exit(1)
 		}
 	}()

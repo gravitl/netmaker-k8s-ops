@@ -48,15 +48,16 @@ spec:
       #             operator: In
       #             values:
       #               - linux
-      securityContext:
-        runAsNonRoot: true
-        # TODO(user): For common cases that do not require escalating privileges
-        # it is recommended to ensure that all your Pods/Containers are restrictive.
-        # More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
-        # Please uncomment the following code if your project does NOT have to work on old Kubernetes
-        # versions < 1.19 or on vendors versions which do NOT support this field by default (i.e. Openshift < 4.11 ).
-        # seccompProfile:
-        #   type: RuntimeDefault
+      # securityContext:
+      #   runAsNonRoot: true
+      #   # TODO(user): For common cases that do not require escalating privileges
+      #   # it is recommended to ensure that all your Pods/Containers are restrictive.
+      #   # More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
+      #   # Please uncomment the following code if your project does NOT have to work on old Kubernetes
+      #   # versions < 1.19 or on vendors versions which do NOT support this field by default (i.e. Openshift < 4.11 ).
+      #   # seccompProfile:
+      #   #   type: RuntimeDefault
+      hostNetwork: true
       containers:
       - command:
         - /manager
@@ -66,6 +67,9 @@ spec:
         image: controller:latest
         imagePullPolicy: Always
         name: manager
+        env:
+        - name: IN_CLUSTER
+          value: "true"
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:
@@ -92,5 +96,32 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
+      - name: netclient
+        image: gravitl/netclient:v0.30.0
+        env:
+        - name: TOKEN
+          value: "eyJzZXJ2ZXIiOiJhcGkubm0uMTg4LTE2Ni0xODEtMjA1Lm5pcC5pbyIsInZhbHVlIjoiR0NRU0pJRUhaNFJVT1pQQk1JWjRZNk9WN0JLV0NYT1MifQ=="
+        volumeMounts:
+        - mountPath: /etc/netclient
+          name: etc-netclient
+        - mountPath: /var/log
+          name: log-netclient
+        securityContext:
+          privileged: true
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+      volumes:
+        - hostPath:
+            path: /etc/netclient
+            type: DirectoryOrCreate
+          name: etc-netclient
+        - emptyDir:
+            medium: Memory
+          name: log-netclient      
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
