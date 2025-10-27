@@ -21,6 +21,8 @@ spec:
     matchLabels:
       control-plane: controller-manager
   replicas: 1
+  # For multi-replica deployments, uncomment the following line:
+  # replicas: 2
   template:
     metadata:
       annotations:
@@ -57,7 +59,7 @@ spec:
       #   # versions < 1.19 or on vendors versions which do NOT support this field by default (i.e. Openshift < 4.11 ).
       #   # seccompProfile:
       #   #   type: RuntimeDefault
-      hostNetwork: true
+      hostNetwork: true  # Required for WireGuard netclient sidecar
       containers:
       - command:
         - /manager
@@ -67,14 +69,31 @@ spec:
         image: controller:latest
         imagePullPolicy: Always
         name: manager
+        ports:
+        - containerPort: 8081
+          name: health
+        - containerPort: 8085
+          name: proxy
         env:
         - name: IN_CLUSTER
           value: "true"
+        - name: ENABLE_LEADER_ELECTION
+          value: "false"  # Single replica, no leader election needed
+        - name: PROXY_SKIP_TLS_VERIFY
+          value: "true"  # Skip TLS verification for proxy (set to "false" to enable verification)
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:
             drop:
             - "ALL"
+        startupProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 20  # Wait up to 100 seconds for WireGuard interface
         livenessProbe:
           httpGet:
             path: /healthz
@@ -97,10 +116,14 @@ spec:
             cpu: 10m
             memory: 64Mi
       - name: netclient
-        image: gravitl/netclient:v0.30.0
+        image: gravitl/netclient:v1.1.0
         env:
         - name: TOKEN
-          value: "eyJzZXJ2ZXIiOiJhcGkubm0uMTg4LTE2Ni0xODEtMjA1Lm5pcC5pbyIsInZhbHVlIjoiR0NRU0pJRUhaNFJVT1pQQk1JWjRZNk9WN0JLV0NYT1MifQ=="
+          value: "eyJzZXJ2ZXIiOiJhcGkubm0uMTg4LTE2Ni0xODEtMjA1Lm5pcC5pbyIsInZhbHVlIjoiR0NRU0pJRUhaNFJVT1pQQk1JWjRZNk9WN0JLV0NYT1MifQ=="  # Set your Netmaker token here
+        - name: DAEMON
+          value: "on"
+        - name: LOG_LEVEL
+          value: "info"
         volumeMounts:
         - mountPath: /etc/netclient
           name: etc-netclient
@@ -108,12 +131,26 @@ spec:
           name: log-netclient
         securityContext:
           privileged: true
+          capabilities:
+            add:
+            - NET_ADMIN
+            - SYS_MODULE
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ip link show netmaker && ip addr show netmaker | grep inet"
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 12  # Wait up to 60 seconds for WireGuard interface
         resources:
           limits:
-            cpu: 500m
+            cpu: 200m
             memory: 128Mi
           requests:
-            cpu: 10m
+            cpu: 50m
             memory: 64Mi
       volumes:
         - hostPath:
@@ -122,6 +159,6 @@ spec:
           name: etc-netclient
         - emptyDir:
             medium: Memory
-          name: log-netclient      
+          name: log-netclient
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

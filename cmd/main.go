@@ -69,7 +69,9 @@ func main() {
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	// Enable leader election by default for multi-replica deployments
+	leaderElectDefault := os.Getenv("ENABLE_LEADER_ELECTION") == "true" || os.Getenv("POD_NAME") != ""
+	flag.BoolVar(&enableLeaderElection, "leader-elect", leaderElectDefault,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
@@ -81,6 +83,12 @@ func main() {
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	// Use custom health probe port if specified
+	if probePort := os.Getenv("HEALTH_PROBE_PORT"); probePort != "" {
+		probeAddr = ":" + probePort
+		setupLog.Info("Using custom health probe port", "port", probeAddr)
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 

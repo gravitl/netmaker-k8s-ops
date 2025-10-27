@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netclient-config
+  namespace: default
+data:
+  # Netmaker server configuration
+  NETCLIENT_SERVER: "api.netmaker.example.com"
+  NETCLIENT_NETWORK: "k8s-network"
+  NETCLIENT_CONFIG_DIR: "/etc/netclient"
+  NETCLIENT_LOG_DIR: "/var/log/netclient"
+  # Token will be provided via secret
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: netclient-secret
+  namespace: default
+type: Opaque
+data:
+  # Base64 encoded Netmaker token
+  # Replace with your actual token: echo -n "your-token-here" | base64
+  NETCLIENT_TOKEN: R0NRU0pJRVo0UlVPWlBCTUlaNFk2T1Y3QktXQ1hPUw==
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netmaker-k8s-proxy
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netmaker-k8s-proxy
+  template:
+    metadata:
+      labels:
+        app: netmaker-k8s-proxy
+    spec:
+      # Required for WireGuard to work
+      hostNetwork: true
+      containers:
+      # Netmaker K8s Proxy container
+      - name: netmaker-k8s-ops
+        image: netmaker-k8s-ops:latest
+        ports:
+        - containerPort: 8085
+          name: proxy
+        env:
+        # Proxy configuration
+        - name: PROXY_PORT
+          value: "8085"
+        - name: GIN_MODE
+          value: "release"
+        - name: IN_CLUSTER
+          value: "true"
+        # Disable netclient sidecar in proxy since we're using separate container
+        - name: NETCLIENT_DISABLED
+          value: "true"
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8085
+          initialDelaySeconds: 15
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8085
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      # Netmaker client sidecar container
+      - name: netclient
+        image: gravitl/netclient:v1.1.0
+        env:
+        # Load configuration from ConfigMap
+        - name: SERVER
+          valueFrom:
+            configMapKeyRef:
+              name: netclient-config
+              key: NETCLIENT_SERVER
+        - name: NETWORK
+          valueFrom:
+            configMapKeyRef:
+              name: netclient-config
+              key: NETCLIENT_NETWORK
+        # Load token from Secret
+        - name: TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: netclient-secret
+              key: NETCLIENT_TOKEN
+        # Netclient configuration
+        - name: DAEMON
+          value: "on"
+        - name: LOG_LEVEL
+          value: "info"
+        volumeMounts:
+        - name: netclient-config
+          mountPath: /etc/netclient
+        - name: netclient-logs
+          mountPath: /var/log
+        securityContext:
+          # Required for WireGuard
+          privileged: true
+          capabilities:
+            add:
+            - NET_ADMIN
+            - SYS_MODULE
+        resources:
+          limits:
+            cpu: 200m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 64Mi
+      volumes:
+      - name: netclient-config
+        emptyDir: {}
+      - name: netclient-logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netmaker-k8s-proxy
+  namespace: default
+spec:
+  selector:
+    app: netmaker-k8s-proxy
+  ports:
+  - name: proxy
+    port: 8085
+    targetPort: 8085
+    protocol: TCP
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netmaker-k8s-proxy-nodeport
+  namespace: default
+spec:
+  selector:
+    app: netmaker-k8s-proxy
+  ports:
+  - name: proxy
+    port: 8085
+    targetPort: 8085
+    nodePort: 30085
+    protocol: TCP
+  type: NodePort
