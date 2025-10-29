@@ -3,8 +3,10 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -19,10 +21,271 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-logr/logr"
 	"github.com/gravitl/netmaker-k8s-ops/conf"
+	"github.com/gravitl/netmaker/models"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
+
+// ProxyMode represents the authentication mode for the proxy
+type ProxyMode string
+
+const (
+	// AuthMode - requests are impersonated using WireGuard peer identity
+	AuthMode ProxyMode = "auth"
+	// NoAuthMode - requests are proxied without authentication
+	NoAuthMode ProxyMode = "noauth"
+)
+
+// ProxyConfig holds configuration for the proxy
+type ProxyConfig struct {
+	Mode              ProxyMode
+	ImpersonateUser   string
+	ImpersonateGroups []string
+}
+
+// UserMapping represents a mapping from IP to user and groups
+type UserMapping struct {
+	User   string   `json:"user"`
+	Groups []string `json:"groups"`
+}
+
+// ExternalAPIConfig holds configuration for external API
+type ExternalAPIConfig struct {
+	ServerDomain string
+	APIToken     string
+	SyncInterval time.Duration
+}
+
+// UserIPMapWithMutex maintains the mapping of IP addresses to users and groups
+type UserIPMapWithMutex struct {
+	UserIPMap models.UserIPMap
+	mutex     sync.RWMutex
+}
+
+// NewUserIPMap creates a new UserIPMap
+func NewUserIPMap() *UserIPMapWithMutex {
+	return &UserIPMapWithMutex{
+		UserIPMap: models.UserIPMap{
+			Mappings: make(map[string]models.UserMapping),
+		},
+	}
+}
+
+// SetUserMapping sets the user and groups for a given IP
+func (uim *UserIPMapWithMutex) SetUserMapping(ip string, user string, groups []string) {
+	uim.mutex.Lock()
+	defer uim.mutex.Unlock()
+	uim.UserIPMap.Mappings[ip] = models.UserMapping{
+		User:   user,
+		Groups: groups,
+	}
+}
+
+// GetUserMapping gets the user and groups for a given IP
+func (uim *UserIPMapWithMutex) GetUserMapping(ip string) (string, []string, bool) {
+	uim.mutex.RLock()
+	defer uim.mutex.RUnlock()
+	mapping, exists := uim.UserIPMap.Mappings[ip]
+	if !exists {
+		return "", nil, false
+	}
+	return mapping.User, mapping.Groups, true
+}
+
+// RemoveUserMapping removes the mapping for a given IP
+func (uim *UserIPMapWithMutex) RemoveUserMapping(ip string) {
+	uim.mutex.Lock()
+	defer uim.mutex.Unlock()
+	delete(uim.UserIPMap.Mappings, ip)
+}
+
+// GetAllMappings returns all current mappings (for debugging)
+func (uim *UserIPMapWithMutex) GetAllMappings() map[string]models.UserMapping {
+	uim.mutex.RLock()
+	defer uim.mutex.RUnlock()
+	// Return a copy to avoid race conditions
+	result := make(map[string]models.UserMapping)
+	for ip, mapping := range uim.UserIPMap.Mappings {
+		result[ip] = mapping
+	}
+	return result
+}
+
+// Global user IP mapping instance
+var globalUserIPMap = NewUserIPMap()
+
+// SetUserIPMapping sets the user and groups for a given IP (global function)
+func SetUserIPMapping(ip string, user string, groups []string) {
+	globalUserIPMap.SetUserMapping(ip, user, groups)
+}
+
+// GetUserIPMapping gets the user and groups for a given IP (global function)
+func GetUserIPMapping(ip string) (string, []string, bool) {
+	return globalUserIPMap.GetUserMapping(ip)
+}
+
+// RemoveUserIPMapping removes the mapping for a given IP (global function)
+func RemoveUserIPMapping(ip string) {
+	globalUserIPMap.RemoveUserMapping(ip)
+}
+
+// GetAllUserIPMappings returns all current mappings (global function)
+func GetAllUserIPMappings() map[string]models.UserMapping {
+	return globalUserIPMap.GetAllMappings()
+}
+
+// getNMAPIConfig reads external API configuration from environment variables
+func getNMAPIConfig() ExternalAPIConfig {
+	config := ExternalAPIConfig{
+		ServerDomain: os.Getenv("EXTERNAL_API_SERVER_DOMAIN"),
+		APIToken:     os.Getenv("EXTERNAL_API_TOKEN"),
+		SyncInterval: 30 * time.Second, // Default sync interval
+	}
+
+	// Override sync interval if set
+	if syncIntervalStr := os.Getenv("EXTERNAL_API_SYNC_INTERVAL"); syncIntervalStr != "" {
+		if duration, err := time.ParseDuration(syncIntervalStr); err == nil {
+			config.SyncInterval = duration
+		}
+	}
+
+	return config
+}
+
+// fetchUserMappingsFromAPI fetches user mappings from the external API
+func fetchUserMappingsFromAPI(config ExternalAPIConfig, zlog logr.Logger) error {
+	if config.ServerDomain == "" || config.APIToken == "" {
+		zlog.V(1).Info("External API not configured, skipping fetch")
+		return nil
+	}
+
+	// Build the API URL
+	apiURL := fmt.Sprintf("https://%s%s", config.ServerDomain, "/api/users/network_ip")
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // Skip TLS verification for external API
+			},
+		},
+	}
+
+	// Create request
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add authorization header
+	req.Header.Set("Authorization", "Bearer "+config.APIToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	// Make the request
+	zlog.V(1).Info("Fetching user mappings from external API", "url", apiURL)
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse response
+	var apiResponse models.UserIPMap
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// Update the global user IP map
+	zlog.Info("Updating user mappings from external API", "count", len(apiResponse.Mappings))
+	for ip, mapping := range apiResponse.Mappings {
+		SetUserIPMapping(ip, mapping.User, mapping.Groups)
+		zlog.V(1).Info("Updated user mapping", "ip", ip, "user", mapping.User, "groups", mapping.Groups)
+	}
+
+	return nil
+}
+
+// startExternalAPISync starts the periodic synchronization with external API
+func startExternalAPISync(ctx context.Context, config ExternalAPIConfig, zlog logr.Logger) {
+	if config.ServerDomain == "" || config.APIToken == "" {
+		zlog.Info("External API not configured, skipping sync")
+		return
+	}
+
+	zlog.Info("Starting external API sync", "server", config.ServerDomain, "interval", config.SyncInterval)
+
+	ticker := time.NewTicker(config.SyncInterval)
+	defer ticker.Stop()
+
+	// Initial fetch
+	if err := fetchUserMappingsFromAPI(config, zlog); err != nil {
+		zlog.Error(err, "Failed to fetch initial user mappings from external API")
+	}
+
+	// Periodic sync
+	for {
+		select {
+		case <-ctx.Done():
+			zlog.Info("Stopping external API sync")
+			return
+		case <-ticker.C:
+			if err := fetchUserMappingsFromAPI(config, zlog); err != nil {
+				zlog.Error(err, "Failed to sync user mappings from external API")
+			}
+		}
+	}
+}
+
+// getProxyConfig reads proxy configuration from environment variables
+func getProxyConfig() ProxyConfig {
+	config := ProxyConfig{
+		Mode: AuthMode, // Default to auth mode
+	}
+
+	// Read proxy mode from environment
+	mode := os.Getenv("PROXY_MODE")
+	switch strings.ToLower(mode) {
+	case "noauth":
+		config.Mode = NoAuthMode
+	case "auth":
+		config.Mode = AuthMode
+	default:
+		// Default to auth mode if not specified or invalid
+		config.Mode = AuthMode
+	}
+
+	// Read impersonation settings for auth mode
+	if config.Mode == AuthMode {
+		config.ImpersonateUser = os.Getenv("PROXY_IMPERSONATE_USER")
+		if config.ImpersonateUser == "" {
+			// Default to using WireGuard peer IP as username
+			config.ImpersonateUser = "wireguard-peer"
+		}
+
+		// Read groups from environment (comma-separated)
+		groupsStr := os.Getenv("PROXY_IMPERSONATE_GROUPS")
+		if groupsStr != "" {
+			config.ImpersonateGroups = strings.Split(groupsStr, ",")
+			// Trim whitespace from group names
+			for i, group := range config.ImpersonateGroups {
+				config.ImpersonateGroups[i] = strings.TrimSpace(group)
+			}
+		} else {
+			// Default groups for WireGuard peers
+			config.ImpersonateGroups = []string{"system:authenticated", "wireguard-peers"}
+		}
+	}
+
+	return config
+}
 
 func GinLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -43,6 +306,17 @@ func GinLogger() gin.HandlerFunc {
 func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	zlog := zap.New(zap.UseDevMode(true))
+
+	// Get proxy configuration
+	proxyConfig := getProxyConfig()
+	zlog.Info("Proxy configuration", "mode", proxyConfig.Mode, "impersonate_user", proxyConfig.ImpersonateUser, "impersonate_groups", proxyConfig.ImpersonateGroups)
+
+	// Get external API configuration and start sync
+	externalAPIConfig := getNMAPIConfig()
+	zlog.Info("External API configuration", "server", externalAPIConfig.ServerDomain, "sync_interval", externalAPIConfig.SyncInterval)
+
+	// Start external API sync in background
+	go startExternalAPISync(ctx, externalAPIConfig, zlog)
 
 	// Note: Netclient runs as an init container to establish WireGuard connection first
 	// Wait a bit for WireGuard interface to be fully established
@@ -138,7 +412,7 @@ func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 	router.Use(GinLogger())
 
 	// Add authentication middleware
-	router.Use(createAuthMiddleware(config, zlog))
+	router.Use(createAuthMiddleware(config, proxyConfig, zlog))
 
 	// Add health check endpoint
 	router.GET("/health", func(c *gin.Context) {
@@ -162,6 +436,84 @@ func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "netclient_status",
 			"data":   netclientStatus,
+		})
+	})
+
+	// Add user IP mapping management endpoints
+	router.GET("/admin/user-mappings", func(c *gin.Context) {
+		mappings := GetAllUserIPMappings()
+		c.JSON(http.StatusOK, gin.H{
+			"status": "user_mappings",
+			"data":   mappings,
+		})
+	})
+
+	router.POST("/admin/user-mappings", func(c *gin.Context) {
+		var request struct {
+			IP     string   `json:"ip" binding:"required"`
+			User   string   `json:"user" binding:"required"`
+			Groups []string `json:"groups"`
+		}
+
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid request format",
+				"details": err.Error(),
+			})
+			return
+		}
+
+		SetUserIPMapping(request.IP, request.User, request.Groups)
+		zlog.Info("User IP mapping added", "ip", request.IP, "user", request.User, "groups", request.Groups)
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "mapping_added",
+			"ip":     request.IP,
+			"user":   request.User,
+			"groups": request.Groups,
+		})
+	})
+
+	router.DELETE("/admin/user-mappings/:ip", func(c *gin.Context) {
+		ip := c.Param("ip")
+		if ip == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "IP parameter is required",
+			})
+			return
+		}
+
+		RemoveUserIPMapping(ip)
+		zlog.Info("User IP mapping removed", "ip", ip)
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "mapping_removed",
+			"ip":     ip,
+		})
+	})
+
+	// Add external API sync endpoint
+	router.POST("/admin/sync-external-api", func(c *gin.Context) {
+		externalAPIConfig := getNMAPIConfig()
+		if externalAPIConfig.ServerDomain == "" || externalAPIConfig.APIToken == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "External API not configured",
+			})
+			return
+		}
+
+		if err := fetchUserMappingsFromAPI(externalAPIConfig, zlog); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to sync from external API",
+				"details": err.Error(),
+			})
+			return
+		}
+
+		zlog.Info("Manual external API sync completed")
+		c.JSON(http.StatusOK, gin.H{
+			"status": "sync_completed",
+			"server": externalAPIConfig.ServerDomain,
 		})
 	})
 
@@ -296,48 +648,105 @@ func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 // createAuthMiddleware creates authentication middleware for the proxy
-func createAuthMiddleware(config *rest.Config, zlog logr.Logger) gin.HandlerFunc {
+func createAuthMiddleware(config *rest.Config, proxyConfig ProxyConfig, zlog logr.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Skip authentication for health checks
-		if c.Request.URL.Path == "/health" || c.Request.URL.Path == "/ready" {
+		// Skip authentication for health checks, netclient status, and admin endpoints
+		if c.Request.URL.Path == "/health" || c.Request.URL.Path == "/ready" || c.Request.URL.Path == "/netclient/status" || strings.HasPrefix(c.Request.URL.Path, "/admin/") {
 			c.Next()
 			return
 		}
 
-		// Handle different authentication methods
+		// Handle different proxy modes
+		switch proxyConfig.Mode {
+		case NoAuthMode:
+			// NoAuth mode: proxy requests without authentication
+			zlog.V(1).Info("NoAuth mode: proxying request without authentication",
+				"method", c.Request.Method,
+				"path", c.Request.URL.Path,
+				"client_ip", c.ClientIP())
+
+		case AuthMode:
+			// Auth mode: impersonate requests using WireGuard peer identity
+			clientIP := c.ClientIP()
+
+			// Look up user and groups from IP mapping
+			impersonateUser := proxyConfig.ImpersonateUser
+			impersonateGroups := proxyConfig.ImpersonateGroups
+
+			if mappedUser, mappedGroups, exists := globalUserIPMap.GetUserMapping(clientIP); exists {
+				impersonateUser = mappedUser
+				impersonateGroups = mappedGroups
+				zlog.V(1).Info("Auth mode: using mapped user/group",
+					"method", c.Request.Method,
+					"path", c.Request.URL.Path,
+					"client_ip", clientIP,
+					"mapped_user", impersonateUser,
+					"mapped_groups", impersonateGroups)
+			} else {
+				zlog.V(1).Info("Auth mode: using default user/group (no mapping found)",
+					"method", c.Request.Method,
+					"path", c.Request.URL.Path,
+					"client_ip", clientIP,
+					"default_user", impersonateUser,
+					"default_groups", impersonateGroups)
+			}
+
+			// Set impersonation headers for Kubernetes API server
+			if impersonateUser != "" {
+				c.Request.Header.Set("Impersonate-User", impersonateUser)
+			}
+			if len(impersonateGroups) > 0 {
+				c.Request.Header.Set("Impersonate-Group", strings.Join(impersonateGroups, ","))
+			}
+
+			// Add additional impersonation headers for better compatibility
+			c.Request.Header.Set("Impersonate-Extra-Original-User", clientIP)
+			c.Request.Header.Set("Impersonate-Extra-Original-Group", "wireguard-peers")
+
+		default:
+			zlog.Error(fmt.Errorf("unknown proxy mode: %s", proxyConfig.Mode), "Invalid proxy configuration")
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Invalid proxy configuration",
+			})
+			c.Abort()
+			return
+		}
+
+		// Set up authentication for the proxy itself to connect to K8s API server
 		if config.BearerToken != "" {
 			// Use Bearer token authentication
 			c.Request.Header.Set("Authorization", "Bearer "+config.BearerToken)
-			zlog.V(1).Info("Using Bearer token authentication")
+			zlog.V(1).Info("Using Bearer token authentication for proxy")
 		} else if config.CertFile != "" && config.KeyFile != "" {
 			// Client certificate authentication is handled by the transport
-			zlog.V(1).Info("Using client certificate authentication")
+			zlog.V(1).Info("Using client certificate authentication for proxy")
 		} else if config.Username != "" && config.Password != "" {
 			// Basic authentication
 			c.Request.SetBasicAuth(config.Username, config.Password)
-			zlog.V(1).Info("Using basic authentication")
+			zlog.V(1).Info("Using basic authentication for proxy")
 		} else {
 			// Check if Authorization header is already present
 			authHeader := c.GetHeader("Authorization")
 			if authHeader == "" {
-				zlog.Error(fmt.Errorf("no authentication method available"), "Authentication failed")
+				zlog.Error(fmt.Errorf("no authentication method available for proxy"), "Proxy authentication failed")
 				c.JSON(http.StatusUnauthorized, gin.H{
-					"error": "Authentication required",
+					"error": "Proxy authentication required",
 				})
 				c.Abort()
 				return
 			}
-			zlog.V(1).Info("Using existing Authorization header")
+			zlog.V(1).Info("Using existing Authorization header for proxy")
 		}
 
 		// Add additional headers for better compatibility
 		c.Request.Header.Set("User-Agent", "netmaker-k8s-proxy/1.0")
 
-		// Log the authentication method being used
-		zlog.V(1).Info("Request authenticated",
+		// Log the request details
+		zlog.V(1).Info("Request processed",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
-			"client_ip", c.ClientIP())
+			"client_ip", c.ClientIP(),
+			"proxy_mode", proxyConfig.Mode)
 
 		c.Next()
 	}

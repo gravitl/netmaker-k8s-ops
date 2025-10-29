@@ -1,0 +1,224 @@
+# RBAC Examples for Netmaker K8s Proxy Auth Mode
+# These examples show how to configure Kubernetes RBAC for WireGuard peer identities
+
+---
+# ClusterRole for basic read access (alice)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alice-basic-role
+rules:
+# Allow reading pods in all namespaces
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+# Allow reading services in all namespaces
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+# Allow reading nodes (for cluster information)
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+# Allow reading namespaces
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding for basic access (alice)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alice-basic
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alice-basic-role
+subjects:
+# Allow the alice user to access the cluster
+- kind: User
+  name: alice
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# ClusterRole for advanced access (bob)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bob-advanced-role
+rules:
+# Allow full access to pods
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["*"]
+# Allow full access to services
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["*"]
+# Allow full access to endpoints
+- apiGroups: [""]
+  resources: ["endpoints"]
+  verbs: ["*"]
+# Allow reading secrets (for service account tokens)
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+# Allow reading configmaps
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+# Allow reading persistent volumes
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list", "watch"]
+# Allow reading persistent volume claims
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch"]
+# Allow reading events
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
+# Allow reading deployments
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+# Allow reading replicasets
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "list", "watch"]
+# Allow reading daemonsets
+- apiGroups: ["apps"]
+  resources: ["daemonsets"]
+  verbs: ["get", "list", "watch"]
+# Allow reading statefulsets
+- apiGroups: ["apps"]
+  resources: ["statefulsets"]
+  verbs: ["get", "list", "watch"]
+# Allow reading ingresses
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+# Allow reading network policies
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding for advanced access (bob)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bob-advanced
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: bob-advanced-role
+subjects:
+- kind: User
+  name: bob
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Role for namespace-specific access (alice)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alice-namespace
+  namespace: default
+rules:
+# Allow full access to pods in this namespace
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["*"]
+# Allow full access to services in this namespace
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["*"]
+# Allow reading secrets in this namespace
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+# Allow reading configmaps in this namespace
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+
+---
+# RoleBinding for namespace-specific access (alice)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alice-namespace
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: alice-namespace
+subjects:
+- kind: User
+  name: alice
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# ClusterRole for admin access (bob) (use with caution)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bob-admin-role
+rules:
+# Allow full access to all resources
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+# Allow access to all non-resource URLs
+- nonResourceURLs: ["*"]
+  verbs: ["*"]
+
+---
+# ClusterRoleBinding for admin access (bob) (use with caution)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bob-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: bob-admin-role
+subjects:
+- kind: User
+  name: bob
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Example: Different users for different access levels
+
+# ClusterRole for read-only access (alice)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alice-readonly-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "nodes", "namespaces"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
+  verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding for read-only access (alice)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alice-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alice-readonly-role
+subjects:
+- kind: User
+  name: alice
+  apiGroup: rbac.authorization.k8s.io
+

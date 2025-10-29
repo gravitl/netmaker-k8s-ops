@@ -9,6 +9,10 @@ The Netmaker K8s Proxy is a reverse proxy that allows secure access to Kubernete
 - **WireGuard Integration**: Works with netclient sidecar container for WireGuard connectivity
 - **Smart Binding**: Automatically binds to WireGuard interface IP for secure tunnel access
 - **Network Isolation**: Ensures all traffic flows through the WireGuard tunnel
+- **Dual Authentication Modes**: Auth mode (impersonation) and NoAuth mode (passthrough)
+- **User Impersonation**: Auth mode impersonates WireGuard peers for granular RBAC
+- **Dynamic User Mapping**: Server-managed IP-to-user/group mapping for flexible access control
+- **External API Integration**: Automatic sync with external APIs for centralized user management
 - **Multi-Authentication Support**: Bearer tokens, client certificates, basic auth
 - **WireGuard Compatible**: Works with WireGuard IP addresses in kubeconfig
 - **Health Checks**: Built-in health and readiness endpoints
@@ -42,6 +46,194 @@ You can override the binding IP using the `PROXY_BIND_IP` environment variable:
 export PROXY_BIND_IP=10.0.0.1  # Bind to specific IP
 export PROXY_BIND_IP=""        # Bind to all interfaces
 ```
+
+## Authentication Modes
+
+The proxy supports two distinct authentication modes to handle different security requirements:
+
+### Auth Mode (Default)
+
+In **auth mode**, requests from the WireGuard network are impersonated using the sender's WireGuard peer identity. This enables granular RBAC control based on WireGuard peer identities.
+
+**How it works:**
+1. **WireGuard Peer Detection**: Proxy identifies the source WireGuard peer
+2. **User Impersonation**: Requests are impersonated as a specific user (default: `wireguard-peer`)
+3. **Group Assignment**: Requests are assigned to specific groups (default: `system:authenticated`, `wireguard-peers`)
+4. **RBAC Enforcement**: Kubernetes RBAC policies can be configured for these identities
+
+**Configuration:**
+```bash
+export PROXY_MODE="auth"
+export PROXY_IMPERSONATE_USER="wireguard-peer"
+export PROXY_IMPERSONATE_GROUPS="system:authenticated,wireguard-peers"
+```
+
+**Use cases:**
+- Multi-tenant environments where different WireGuard peers need different permissions
+- Security-sensitive deployments requiring identity-based access control
+- Compliance requirements for audit trails and user attribution
+
+### NoAuth Mode
+
+In **noauth mode**, requests from the WireGuard network are proxied to the Kubernetes API server without authentication. This mode can be combined with external authentication mechanisms.
+
+**How it works:**
+1. **Passthrough**: Requests are forwarded directly to the Kubernetes API server
+2. **No Impersonation**: No user impersonation headers are added
+3. **External Auth**: Relies on external authentication (IDP, cloud provider, etc.)
+4. **Simple Proxy**: Acts as a basic reverse proxy
+
+**Configuration:**
+```bash
+export PROXY_MODE="noauth"
+```
+
+**Use cases:**
+- Integration with external identity providers (OIDC, LDAP, etc.)
+- Cloud provider authentication (AWS IAM, Azure AD, GCP IAM)
+- Simple proxy scenarios where authentication is handled upstream
+- Development and testing environments
+
+### Mode Comparison
+
+| Feature | Auth Mode | NoAuth Mode |
+|---------|-----------|-------------|
+| **User Impersonation** | ✅ Yes | ❌ No |
+| **RBAC Integration** | ✅ Full | ❌ None |
+| **External Auth** | ❌ Not needed | ✅ Required |
+| **Audit Trail** | ✅ User attribution | ❌ Limited |
+| **Security** | ✅ High | ⚠️ Depends on external |
+| **Complexity** | ⚠️ Medium | ✅ Low |
+| **Use Case** | Production, Multi-tenant | Simple proxy, External auth |
+
+## User IP Mapping (Auth Mode)
+
+In auth mode, the proxy supports dynamic user IP mapping, allowing different WireGuard peers to be impersonated as different Kubernetes users with different group memberships.
+
+### How It Works
+
+1. **Server Management**: User mappings are managed through admin API endpoints
+2. **Dynamic Lookup**: For each request, the proxy looks up the client IP in the mapping
+3. **Impersonation**: If a mapping exists, uses the mapped user/groups; otherwise falls back to defaults
+4. **RBAC Integration**: Kubernetes RBAC policies can be configured for the mapped users/groups
+
+### Admin API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/admin/user-mappings` | GET | Get all current mappings |
+| `/admin/user-mappings` | POST | Add a new mapping |
+| `/admin/user-mappings/{ip}` | DELETE | Remove a mapping |
+
+### Example Usage
+
+```bash
+# Add a mapping for Alice (IP 10.0.0.1) with developer access
+curl -X POST http://localhost:8085/admin/user-mappings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ip": "10.0.0.1",
+    "user": "alice",
+    "groups": ["system:authenticated", "developers"]
+  }'
+
+# Add a mapping for Bob (IP 10.0.0.2) with admin access
+curl -X POST http://localhost:8085/admin/user-mappings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ip": "10.0.0.2", 
+    "user": "bob",
+    "groups": ["system:authenticated", "admins"]
+  }'
+
+# View all mappings
+curl http://localhost:8085/admin/user-mappings
+
+# Remove a mapping
+curl -X DELETE http://localhost:8085/admin/user-mappings/10.0.0.1
+```
+
+### Integration Examples
+
+#### Netmaker Integration
+```bash
+#!/bin/bash
+# Sync Netmaker peer IPs with user mappings
+PEERS=$(curl -s "https://your-netmaker-server/api/v1/networks/your-network/peers" \
+  -H "Authorization: Bearer $NETMAKER_TOKEN")
+
+echo "$PEERS" | jq -r '.[] | @base64' | while read peer; do
+  PEER_DATA=$(echo "$peer" | base64 -d)
+  IP=$(echo "$PEER_DATA" | jq -r '.address')
+  USER=$(echo "$PEER_DATA" | jq -r '.name')
+  
+  curl -X POST http://localhost:8085/admin/user-mappings \
+    -H "Content-Type: application/json" \
+    -d "{\"ip\": \"$IP\", \"user\": \"$USER\", \"groups\": [\"system:authenticated\", \"wireguard-peers\"]}"
+done
+```
+
+For detailed API documentation, see [USER_IP_MAPPING_API.md](USER_IP_MAPPING_API.md).
+
+## External API Integration
+
+The proxy can automatically fetch user mappings from an external API, enabling centralized management of user access control.
+
+### Configuration
+
+Set the following environment variables:
+
+```bash
+export EXTERNAL_API_SERVER_DOMAIN="api.example.com"
+export EXTERNAL_API_TOKEN="your-api-token"
+export EXTERNAL_API_SYNC_INTERVAL="5m"
+```
+
+### How It Works
+
+1. **Automatic Sync**: Proxy fetches user mappings from external API on startup and periodically
+2. **API Endpoint**: `GET https://{domain}/api/users/network_ip`
+3. **Authentication**: Bearer token authentication
+4. **Response Format**: JSON with user IP mappings
+
+### Example API Response
+
+```json
+{
+  "mappings": {
+    "10.0.0.1": {
+      "user": "alice",
+      "groups": ["system:authenticated", "developers"]
+    },
+    "10.0.0.2": {
+      "user": "bob",
+      "groups": ["system:authenticated", "admins"]
+    }
+  }
+}
+```
+
+### Manual Sync
+
+Trigger a manual sync using the admin API:
+
+```bash
+curl -X POST http://localhost:8085/admin/sync-external-api
+```
+
+### Integration Examples
+
+#### Netmaker Integration
+```bash
+# Create API endpoint that serves Netmaker peer data
+curl -s "https://your-netmaker-server/api/v1/networks/your-network/peers" \
+  -H "Authorization: Bearer $NETMAKER_TOKEN" | \
+jq '{
+  mappings: [.[] | {key: .address, value: {user: .name, groups: ["system:authenticated", "wireguard-peers"]}}] | from_entries
+}'
+```
+
+For detailed integration guide, see [EXTERNAL_API_INTEGRATION.md](EXTERNAL_API_INTEGRATION.md).
 
 ## Quick Start
 
@@ -134,6 +326,13 @@ curl http://localhost:8085/metrics
 | `KUBECONFIG` | `~/.kube/config` | Path to kubeconfig file |
 | `PROXY_PORT` | `8085` | Port for the proxy server |
 | `PROXY_BIND_IP` | Auto-detected | IP address to bind the proxy to (defaults to WireGuard interface IP) |
+| `PROXY_MODE` | `auth` | Proxy authentication mode (`auth` or `noauth`) |
+| `PROXY_IMPERSONATE_USER` | `wireguard-peer` | Username to impersonate for WireGuard peers (auth mode only) |
+| `PROXY_IMPERSONATE_GROUPS` | `system:authenticated,wireguard-peers` | Groups to impersonate for WireGuard peers (auth mode only) |
+| `PROXY_SKIP_TLS_VERIFY` | `true` | Skip TLS verification for proxy connections |
+| `EXTERNAL_API_SERVER_DOMAIN` | - | External API server domain for user mapping sync |
+| `EXTERNAL_API_TOKEN` | - | Bearer token for external API authentication |
+| `EXTERNAL_API_SYNC_INTERVAL` | `5m` | How often to sync with external API |
 | `GIN_MODE` | `debug` | Gin framework mode (debug/release) |
 | `IN_CLUSTER` | `false` | Use in-cluster configuration |
 
