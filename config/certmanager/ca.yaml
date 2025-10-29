@@ -1,0 +1,35 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: netmaker-webhook-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: netmaker-webhook-root-ca
+  namespace: netmaker-k8s-ops-system
+spec:
+  isCA: true
+  secretName: netmaker-webhook-root-ca
+  commonName: netmaker-webhook-root-ca
+  usages:
+  - cert sign
+  - crl sign
+  - digital signature
+  - key encipherment
+  issuerRef:
+    name: netmaker-webhook-selfsigned
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: netmaker-webhook-ca
+  namespace: netmaker-k8s-ops-system
+spec:
+  ca:
+    secretName: netmaker-webhook-root-ca
+
+

@@ -74,6 +74,12 @@ spec:
           name: health
         - containerPort: 8085
           name: proxy
+        - containerPort: 9443
+          name: webhook
+        volumeMounts:
+        - name: cert
+          mountPath: /tmp/k8s-webhook-server/serving-certs
+          readOnly: true
         env:
         - name: IN_CLUSTER
           value: "true"
@@ -153,6 +159,9 @@ spec:
             cpu: 50m
             memory: 64Mi
       volumes:
+        - name: cert
+          secret:
+            secretName: webhook-server-cert
         - hostPath:
             path: /etc/netclient
             type: DirectoryOrCreate

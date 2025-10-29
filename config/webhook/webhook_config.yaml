@@ -1,0 +1,28 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: netclient-sidecar-webhook
+  labels:
+    app.kubernetes.io/name: netmaker-k8s-ops
+    app.kubernetes.io/instance: netmaker-k8s-ops
+    app.kubernetes.io/component: webhook
+  annotations:
+    cert-manager.io/inject-ca-from: netmaker-k8s-ops-system/netmaker-k8s-ops-netmaker-webhook-root-ca
+webhooks:
+- name: netclient-sidecar.netmaker.io
+  clientConfig:
+    service:
+      name: netmaker-k8s-ops-webhook-service
+      namespace: netmaker-k8s-ops-system
+      path: "/mutate-pods"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+  objectSelector:
+    matchLabels:
+      netmaker.io/netclient: enabled

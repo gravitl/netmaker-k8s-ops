@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: netmaker-k8s-ops-webhook-server-cert
+  namespace: netmaker-k8s-ops-system
+spec:
+  secretName: webhook-server-cert
+  issuerRef:
+    name: netmaker-k8s-ops-netmaker-webhook-ca
+    kind: Issuer
+  dnsNames:
+  - netmaker-k8s-ops-webhook-service.netmaker-k8s-ops-system.svc
+  - netmaker-k8s-ops-webhook-service.netmaker-k8s-ops-system.svc.cluster.local
+  usages:
+  - digital signature
+  - key encipherment

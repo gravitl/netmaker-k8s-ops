@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,6 +81,21 @@ func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 
 	// Create a reverse proxy to the Kubernetes API server
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	// Stream-friendly settings and resilient error handling (eg: kubectl logs --follow)
+	proxy.FlushInterval = 200 * time.Millisecond
+	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
+		// Ignore client-side disconnects and aborted handlers
+		if errors.Is(err, context.Canceled) || errors.Is(err, http.ErrAbortHandler) {
+			return
+		}
+		// Some transports wrap the error; handle by message substring as well
+		if strings.Contains(err.Error(), "client disconnected") || strings.Contains(err.Error(), "request canceled") {
+			return
+		}
+		zlog.Error(err, "proxy error")
+		// Best-effort error response if headers not already sent
+		http.Error(rw, "upstream error", http.StatusBadGateway)
+	}
 
 	// Configure the proxy to handle responses properly
 	proxy.ModifyResponse = func(resp *http.Response) error {

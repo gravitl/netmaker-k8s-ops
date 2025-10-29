@@ -1,0 +1,55 @@
+
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: nginx-with-netclient
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: nginx
+#   template:
+#     metadata:
+#       labels:
+#         app: nginx
+#         netmaker.io/netclient: enabled  # This label triggers the webhook  
+#         # Custom secret configuration via labels
+#         netmaker.io/secret-name: netclient-token
+#         netmaker.io/secret-key: token
+#         netmaker.io/secret-namespace: default
+#     spec:
+#       containers:
+#       - name: nginx
+#         image: nginx:1.21
+#         ports:
+#         - containerPort: 80
+#         resources:
+#           requests:
+#             memory: "64Mi"
+#             cpu: "250m"
+#           limits:
+#             memory: "128Mi"
+#             cpu: "500m"
+# ---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox-with-netclient
+  labels:
+    netmaker.io/netclient: enabled  # This label triggers the webhook
+    # Custom secret configuration via labels
+    netmaker.io/secret-name: netclient-token
+    netmaker.io/secret-key: token
+    netmaker.io/secret-namespace: default
+spec:
+  containers:
+  - name: busybox
+    image: busybox:1.35
+    command: ['sh', '-c', 'sleep 3600']
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "100m"
+      limits:
+        memory: "64Mi"
+        cpu: "200m"

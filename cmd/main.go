@@ -41,9 +41,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	networkv1 "github.com/gravitl/netmaker-k8s-ops/api/v1"
 	"github.com/gravitl/netmaker-k8s-ops/internal/controller"
+	netmakerwebhook "github.com/gravitl/netmaker-k8s-ops/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -166,6 +168,27 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "NetmakerOps")
 		os.Exit(1)
 	}
+
+	// Register the netclient sidecar webhook
+	netclientWebhook := netmakerwebhook.NewNetclientSidecarWebhook()
+
+	// Inject dependencies
+	if err := netclientWebhook.InjectClient(mgr.GetClient()); err != nil {
+		setupLog.Error(err, "unable to inject client into webhook")
+		os.Exit(1)
+	}
+
+	// Create decoder
+	decoder := admission.NewDecoder(scheme)
+
+	if err := netclientWebhook.InjectDecoder(decoder); err != nil {
+		setupLog.Error(err, "unable to inject decoder into webhook")
+		os.Exit(1)
+	}
+
+	mgr.GetWebhookServer().Register("/mutate-pods", &admission.Webhook{Handler: netclientWebhook})
+	setupLog.Info("registered netclient sidecar webhook")
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
