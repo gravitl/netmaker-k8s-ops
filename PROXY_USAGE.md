@@ -186,7 +186,7 @@ Set the following environment variables:
 ```bash
 export EXTERNAL_API_SERVER_DOMAIN="api.example.com"
 export EXTERNAL_API_TOKEN="your-api-token"
-export EXTERNAL_API_SYNC_INTERVAL="5m"
+export EXTERNAL_API_SYNC_INTERVAL="300"  # seconds
 ```
 
 ### How It Works
@@ -332,7 +332,7 @@ curl http://localhost:8085/metrics
 | `PROXY_SKIP_TLS_VERIFY` | `true` | Skip TLS verification for proxy connections |
 | `EXTERNAL_API_SERVER_DOMAIN` | - | External API server domain for user mapping sync |
 | `EXTERNAL_API_TOKEN` | - | Bearer token for external API authentication |
-| `EXTERNAL_API_SYNC_INTERVAL` | `5m` | How often to sync with external API |
+| `EXTERNAL_API_SYNC_INTERVAL` | `300` | How often to sync with external API (seconds) |
 | `GIN_MODE` | `debug` | Gin framework mode (debug/release) |
 | `IN_CLUSTER` | `false` | Use in-cluster configuration |
 

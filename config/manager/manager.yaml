@@ -89,16 +89,12 @@ spec:
           value: "true"  # Skip TLS verification for proxy (set to "false" to enable verification)
         - name: PROXY_MODE
           value: "auth"  # Proxy mode: "auth" (impersonate WireGuard peers) or "noauth" (no authentication)
-        - name: PROXY_IMPERSONATE_USER
-          value: "wireguard-peer"  # Username to impersonate for WireGuard peers
-        - name: PROXY_IMPERSONATE_GROUPS
-          value: "system:authenticated,wireguard-peers"  # Groups to impersonate for WireGuard peers
         - name: EXTERNAL_API_SERVER_DOMAIN
-          value: ""  # External API server domain (e.g., api.example.com)
+          value: "api.nm.188-166-181-205.nip.io"  # External API server domain (e.g., api.example.com)
         - name: EXTERNAL_API_TOKEN
-          value: ""  # API token for external API authentication
+          value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJSb2xlIjoic3VwZXItYWRtaW4iLCJVc2VyTmFtZSI6ImFiaGkiLCJBcGkiOiIiLCJUb2tlblR5cGUiOiJ1c2VyX2lkX3Rva2VuIiwiUmFjQXV0b0Rpc2FibGUiOmZhbHNlLCJpc3MiOiJOZXRtYWtlciIsInN1YiI6InVzZXJ8YWJoaSIsImV4cCI6MTc2MjY4NDA4NiwiaWF0IjoxNzU5OTg0MDg2fQ.LwXsBnmSpzQ2mnd0KyuiUEbWjS0X7SYrBE_CMqgy6co"  # API token for external API authentication
         - name: EXTERNAL_API_SYNC_INTERVAL
-          value: "5m"  # Sync interval (e.g., 5m, 10m, 1h)
+          value: "30"  # Sync interval in seconds
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:

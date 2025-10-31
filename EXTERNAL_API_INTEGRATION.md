@@ -14,7 +14,7 @@ The proxy can automatically fetch user IP mappings from an external API endpoint
 |----------|-------------|---------|----------|
 | `EXTERNAL_API_SERVER_DOMAIN` | Domain of the external API server | - | Yes |
 | `EXTERNAL_API_TOKEN` | Bearer token for API authentication | - | Yes |
-| `EXTERNAL_API_SYNC_INTERVAL` | How often to sync with external API | `5m` | No |
+| `EXTERNAL_API_SYNC_INTERVAL` | How often to sync with external API (seconds) | `300` | No |
 
 ### Example Configuration
 
@@ -34,7 +34,7 @@ spec:
         - name: EXTERNAL_API_TOKEN
           value: "your-api-token-here"
         - name: EXTERNAL_API_SYNC_INTERVAL
-          value: "5m"
+          value: "300"  # seconds
 ```
 
 ## External API Specification
