@@ -201,6 +201,9 @@ func main() {
 	}
 	wg := &sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())
+	setupLog.Info("starting API server")
+	wg.Add(1)
+	go proxy.StartAPIServer(ctx, wg)
 	setupLog.Info("starting k8s proxy server")
 	wg.Add(1)
 	go proxy.StartK8sProxy(ctx, wg)

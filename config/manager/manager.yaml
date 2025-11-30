@@ -130,7 +130,7 @@ spec:
             cpu: 10m
             memory: 64Mi
       - name: netclient
-        image: gravitl/netclient:v1.1.0
+        image: gravitl/netclient:v1.2.0
         env:
         - name: TOKEN
           value: "eyJzZXJ2ZXIiOiJhcGkubm0uMTg4LTE2Ni0xODEtMjA1Lm5pcC5pbyIsInZhbHVlIjoiR0NRU0pJRUhaNFJVT1pQQk1JWjRZNk9WN0JLV0NYT1MifQ=="  # Set your Netmaker token here

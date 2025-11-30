@@ -414,109 +414,6 @@ func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 	// Add authentication middleware
 	router.Use(createAuthMiddleware(config, proxyConfig, zlog))
 
-	// Add health check endpoint
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status": "healthy",
-			"proxy":  "k8s-api-proxy",
-		})
-	})
-
-	// Add readiness check endpoint
-	router.GET("/ready", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status": "ready",
-			"proxy":  "k8s-api-proxy",
-		})
-	})
-
-	// Add netclient status endpoint (simplified - just checks WireGuard interface)
-	router.GET("/netclient/status", func(c *gin.Context) {
-		netclientStatus := checkNetclientContainer()
-		c.JSON(http.StatusOK, gin.H{
-			"status": "netclient_status",
-			"data":   netclientStatus,
-		})
-	})
-
-	// Add user IP mapping management endpoints
-	router.GET("/admin/user-mappings", func(c *gin.Context) {
-		mappings := GetAllUserIPMappings()
-		c.JSON(http.StatusOK, gin.H{
-			"status": "user_mappings",
-			"data":   mappings,
-		})
-	})
-
-	router.POST("/admin/user-mappings", func(c *gin.Context) {
-		var request struct {
-			IP     string   `json:"ip" binding:"required"`
-			User   string   `json:"user" binding:"required"`
-			Groups []string `json:"groups"`
-		}
-
-		if err := c.ShouldBindJSON(&request); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "Invalid request format",
-				"details": err.Error(),
-			})
-			return
-		}
-
-		SetUserIPMapping(request.IP, request.User, request.Groups)
-		zlog.Info("User IP mapping added", "ip", request.IP, "user", request.User, "groups", request.Groups)
-
-		c.JSON(http.StatusOK, gin.H{
-			"status": "mapping_added",
-			"ip":     request.IP,
-			"user":   request.User,
-			"groups": request.Groups,
-		})
-	})
-
-	router.DELETE("/admin/user-mappings/:ip", func(c *gin.Context) {
-		ip := c.Param("ip")
-		if ip == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "IP parameter is required",
-			})
-			return
-		}
-
-		RemoveUserIPMapping(ip)
-		zlog.Info("User IP mapping removed", "ip", ip)
-
-		c.JSON(http.StatusOK, gin.H{
-			"status": "mapping_removed",
-			"ip":     ip,
-		})
-	})
-
-	// Add external API sync endpoint
-	router.POST("/admin/sync-external-api", func(c *gin.Context) {
-		externalAPIConfig := getNMAPIConfig()
-		if externalAPIConfig.ServerDomain == "" || externalAPIConfig.APIToken == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "External API not configured",
-			})
-			return
-		}
-
-		if err := fetchUserMappingsFromAPI(externalAPIConfig, zlog); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "Failed to sync from external API",
-				"details": err.Error(),
-			})
-			return
-		}
-
-		zlog.Info("Manual external API sync completed")
-		c.JSON(http.StatusOK, gin.H{
-			"status": "sync_completed",
-			"server": externalAPIConfig.ServerDomain,
-		})
-	})
-
 	// Define the main proxy route - this handles all Kubernetes API requests
 	// Use a more specific pattern to avoid conflicts with health/ready endpoints
 	router.Any("/api/*path", func(c *gin.Context) {
@@ -650,11 +547,7 @@ func StartK8sProxy(ctx context.Context, wg *sync.WaitGroup) {
 // createAuthMiddleware creates authentication middleware for the proxy
 func createAuthMiddleware(config *rest.Config, proxyConfig ProxyConfig, zlog logr.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Skip authentication for health checks, netclient status, and admin endpoints
-		if c.Request.URL.Path == "/health" || c.Request.URL.Path == "/ready" || c.Request.URL.Path == "/netclient/status" || strings.HasPrefix(c.Request.URL.Path, "/admin/") {
-			c.Next()
-			return
-		}
+		// All proxy routes require authentication (API routes are on separate server)
 
 		// Handle different proxy modes
 		switch proxyConfig.Mode {
