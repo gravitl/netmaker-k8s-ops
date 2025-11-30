@@ -192,7 +192,7 @@ export EXTERNAL_API_SYNC_INTERVAL="300"  # seconds
 ### How It Works
 
 1. **Automatic Sync**: Proxy fetches user mappings from external API on startup and periodically
-2. **API Endpoint**: `GET https://{domain}/api/users/network_ip`
+2. **API Endpoint**: `GET https://{domain}/api/v1/users/network_ip`
 3. **Authentication**: Bearer token authentication
 4. **Response Format**: JSON with user IP mappings
 

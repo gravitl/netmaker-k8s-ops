@@ -161,7 +161,7 @@ func fetchUserMappingsFromAPI(config ExternalAPIConfig, zlog logr.Logger) error 
 	}
 
 	// Build the API URL
-	apiURL := fmt.Sprintf("https://%s%s", config.ServerDomain, "/api/users/network_ip")
+	apiURL := fmt.Sprintf("https://%s%s", config.ServerDomain, "/api/v1/users/network_ip")
 
 	// Create HTTP client with timeout
 	client := &http.Client{
@@ -198,14 +198,23 @@ func fetchUserMappingsFromAPI(config ExternalAPIConfig, zlog logr.Logger) error 
 	}
 
 	// Parse response
-	var apiResponse models.UserIPMap
+	var apiResponse models.SuccessResponse
 	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
 
+	data, err := json.Marshal(apiResponse.Response)
+	if err != nil {
+		return err
+	}
+	userIPMap := models.UserIPMap{}
+	err = json.Unmarshal(data, &userIPMap)
+	if err != nil {
+		return err
+	}
 	// Update the global user IP map
-	zlog.Info("Updating user mappings from external API", "count", len(apiResponse.Mappings))
-	for ip, mapping := range apiResponse.Mappings {
+	zlog.Info("Updating user mappings from external API", "count", len(userIPMap.Mappings))
+	for ip, mapping := range userIPMap.Mappings {
 		SetUserIPMapping(ip, mapping.User, mapping.Groups)
 		zlog.V(1).Info("Updated user mapping", "ip", ip, "user", mapping.User, "groups", mapping.Groups)
 	}
