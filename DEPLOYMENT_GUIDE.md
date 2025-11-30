@@ -81,8 +81,9 @@ curl http://localhost:8085/netclient/status
 
 The netclient sidecar runs with:
 - `privileged: true` (required for WireGuard)
-- `hostNetwork: true` (required for WireGuard interfaces)
 - Capabilities: `NET_ADMIN`, `SYS_MODULE`
+
+Note: `hostNetwork` is not required. Containers in a pod share the network namespace, so the WireGuard interface created by the netclient sidecar is automatically accessible to all containers in the pod.
 
 ## Architecture
 

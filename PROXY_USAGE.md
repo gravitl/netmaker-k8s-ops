@@ -530,7 +530,9 @@ spec:
       labels:
         app: netmaker-k8s-proxy
     spec:
-      hostNetwork: true  # Required for WireGuard
+      # Note: hostNetwork is not required. The proxy and netclient sidecar share the pod's
+      # network namespace, so the WireGuard interface created by netclient is accessible
+      # to the proxy container without host networking.
       containers:
       # Netmaker K8s Proxy
       - name: netmaker-k8s-ops

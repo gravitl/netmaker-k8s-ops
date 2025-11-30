@@ -7,7 +7,7 @@ The Netclient Sidecar Webhook automatically adds a WireGuard netclient sidecar t
 1. **Label Detection**: The webhook watches for pods with the label `netmaker.io/netclient: enabled`
 2. **Namespace Filtering**: Only applies to namespaces with the label `netmaker.io/webhook: enabled`
 3. **Sidecar Injection**: Automatically adds a netclient container with proper configuration
-4. **Network Setup**: Sets `hostNetwork: true` and adds required volumes for WireGuard
+4. **Network Setup**: Adds required volumes for WireGuard. Note: `hostNetwork` is not required since containers in a pod share the network namespace.
 
 ## Prerequisites
 
@@ -295,7 +295,7 @@ volumes:
 ### 3. Network Configuration
 
 ```yaml
-hostNetwork: true  # Required for WireGuard
+# Note: hostNetwork is not required. Containers in a pod share the network namespace.
 ```
 
 ## Troubleshooting

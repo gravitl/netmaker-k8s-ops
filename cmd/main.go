@@ -169,7 +169,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Register the netclient sidecar webhook
+	// Register the netclient sidecar webhook for all supported resource types
 	netclientWebhook := netmakerwebhook.NewNetclientSidecarWebhook()
 
 	// Inject dependencies
@@ -186,8 +186,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Register webhook handlers for all supported resource types
 	mgr.GetWebhookServer().Register("/mutate-pods", &admission.Webhook{Handler: netclientWebhook})
-	setupLog.Info("registered netclient sidecar webhook")
+	mgr.GetWebhookServer().Register("/mutate-deployments", &admission.Webhook{Handler: netclientWebhook})
+	mgr.GetWebhookServer().Register("/mutate-statefulsets", &admission.Webhook{Handler: netclientWebhook})
+	mgr.GetWebhookServer().Register("/mutate-daemonsets", &admission.Webhook{Handler: netclientWebhook})
+	mgr.GetWebhookServer().Register("/mutate-jobs", &admission.Webhook{Handler: netclientWebhook})
+	mgr.GetWebhookServer().Register("/mutate-replicasets", &admission.Webhook{Handler: netclientWebhook})
+	setupLog.Info("registered netclient sidecar webhook for all resource types")
 
 	// +kubebuilder:scaffold:builder
 

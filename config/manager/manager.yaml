@@ -59,7 +59,9 @@ spec:
       #   # versions < 1.19 or on vendors versions which do NOT support this field by default (i.e. Openshift < 4.11 ).
       #   # seccompProfile:
       #   #   type: RuntimeDefault
-      hostNetwork: true  # Required for WireGuard netclient sidecar
+      # Note: hostNetwork is not required. The proxy and netclient sidecar share the pod's
+      # network namespace, so the WireGuard interface created by netclient is accessible
+      # to the proxy container without host networking.
       containers:
       - command:
         - /manager

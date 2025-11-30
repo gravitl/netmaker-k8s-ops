@@ -9,7 +9,7 @@ metadata:
   annotations:
     cert-manager.io/inject-ca-from: netmaker-k8s-ops-system/netmaker-k8s-ops-netmaker-webhook-root-ca
 webhooks:
-- name: netclient-sidecar.netmaker.io
+- name: netclient-sidecar-pods.netmaker.io
   clientConfig:
     service:
       name: netmaker-k8s-ops-webhook-service
@@ -20,6 +20,91 @@ webhooks:
     apiGroups: [""]
     apiVersions: ["v1"]
     resources: ["pods"]
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+  objectSelector:
+    matchLabels:
+      netmaker.io/netclient: enabled
+- name: netclient-sidecar-deployments.netmaker.io
+  clientConfig:
+    service:
+      name: netmaker-k8s-ops-webhook-service
+      namespace: netmaker-k8s-ops-system
+      path: "/mutate-deployments"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["apps"]
+    apiVersions: ["v1"]
+    resources: ["deployments"]
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+  objectSelector:
+    matchLabels:
+      netmaker.io/netclient: enabled
+- name: netclient-sidecar-statefulsets.netmaker.io
+  clientConfig:
+    service:
+      name: netmaker-k8s-ops-webhook-service
+      namespace: netmaker-k8s-ops-system
+      path: "/mutate-statefulsets"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["apps"]
+    apiVersions: ["v1"]
+    resources: ["statefulsets"]
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+  objectSelector:
+    matchLabels:
+      netmaker.io/netclient: enabled
+- name: netclient-sidecar-daemonsets.netmaker.io
+  clientConfig:
+    service:
+      name: netmaker-k8s-ops-webhook-service
+      namespace: netmaker-k8s-ops-system
+      path: "/mutate-daemonsets"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["apps"]
+    apiVersions: ["v1"]
+    resources: ["daemonsets"]
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+  objectSelector:
+    matchLabels:
+      netmaker.io/netclient: enabled
+- name: netclient-sidecar-jobs.netmaker.io
+  clientConfig:
+    service:
+      name: netmaker-k8s-ops-webhook-service
+      namespace: netmaker-k8s-ops-system
+      path: "/mutate-jobs"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["batch"]
+    apiVersions: ["v1"]
+    resources: ["jobs"]
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: ["v1", "v1beta1"]
+  objectSelector:
+    matchLabels:
+      netmaker.io/netclient: enabled
+- name: netclient-sidecar-replicasets.netmaker.io
+  clientConfig:
+    service:
+      name: netmaker-k8s-ops-webhook-service
+      namespace: netmaker-k8s-ops-system
+      path: "/mutate-replicasets"
+  rules:
+  - operations: ["CREATE", "UPDATE"]
+    apiGroups: ["apps"]
+    apiVersions: ["v1"]
+    resources: ["replicasets"]
   failurePolicy: Fail
   sideEffects: None
   admissionReviewVersions: ["v1", "v1beta1"]

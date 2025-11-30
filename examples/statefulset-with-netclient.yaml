@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database-with-netclient
+  labels:
+    app: database
+    netmaker.io/netclient: enabled  # This label triggers the webhook
+spec:
+  serviceName: database
+  replicas: 1
+  selector:
+    matchLabels:
+      app: database
+  template:
+    metadata:
+      labels:
+        app: database
+        netmaker.io/netclient: enabled  # Label must also be on pod template
+    spec:
+      containers:
+      - name: database
+        image: postgres:14
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "example"
+        ports:
+        - containerPort: 5432
+          name: postgres
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      # Note: The netclient sidecar will be automatically injected by the webhook
+      # This allows the database to be accessed from the private network
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+spec:
+  selector:
+    app: database
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+    protocol: TCP
+  type: ClusterIP
+

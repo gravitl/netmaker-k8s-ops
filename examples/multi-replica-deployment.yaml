@@ -19,8 +19,9 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
-      # Required for WireGuard to work
-      hostNetwork: true
+      # Note: hostNetwork is not required. The manager and netclient sidecar share the pod's
+      # network namespace, so the WireGuard interface created by netclient is accessible
+      # to the manager container without host networking.
       containers:
       # Netmaker K8s Operator
       - command:

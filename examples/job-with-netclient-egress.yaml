@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: data-sync-job-with-netclient
+  labels:
+    app: data-sync
+    netmaker.io/netclient: enabled  # This label triggers the webhook
+spec:
+  template:
+    metadata:
+      labels:
+        app: data-sync
+        netmaker.io/netclient: enabled  # Label must also be on pod template
+    spec:
+      containers:
+      - name: data-sync
+        image: curlimages/curl:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Syncing data from private network..."
+          curl -f http://private-api.example.com:8080/api/sync || exit 1
+          echo "Data sync completed successfully"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+      restartPolicy: Never
+      # Note: The netclient sidecar will be automatically injected by the webhook
+      # This allows the job to access services on the private network
+  backoffLimit: 3
+

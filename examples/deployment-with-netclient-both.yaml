@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-with-netclient-both
+  labels:
+    app: my-app
+    netmaker.io/netclient: enabled  # This label triggers the webhook
+  annotations:
+    # Optional: Custom secret configuration
+    # netmaker.io/secret-name: netclient-token
+    # netmaker.io/secret-key: token
+    # netmaker.io/secret-namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+        netmaker.io/netclient: enabled  # Label must also be on pod template
+    spec:
+      containers:
+      - name: my-app
+        image: nginx:1.21
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+      # Note: The netclient sidecar will be automatically injected by the webhook
+      # This allows the application to:
+      # 1. Receive incoming connections from the private network
+      # 2. Make outbound connections to other services on the private network
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-with-netclient-both
+spec:
+  selector:
+    app: my-app
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  type: ClusterIP
+
