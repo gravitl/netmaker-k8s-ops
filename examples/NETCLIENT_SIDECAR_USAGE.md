@@ -183,7 +183,22 @@ curl http://<pod-wireguard-ip>:<service-port>
 ```bash
 # From inside the pod
 kubectl exec <pod-name> -c <app-container> -- curl http://<private-service-ip>:<port>
+
+# Test Kubernetes service DNS resolution (works from pods with sidecar)
+kubectl exec <pod-name> -c <app-container> -- curl http://my-service.default.svc.cluster.local:80
 ```
+
+## Kubernetes Service DNS Access
+
+### From Pods with Netclient Sidecar
+Pods with the netclient sidecar can resolve and access Kubernetes service DNS names (e.g., `my-service.default.svc.cluster.local`) because they use the cluster's CoreDNS and are on the cluster network.
+
+### From External VPN Clients
+External devices connected to the Netmaker VPN can:
+- ✅ Access pods directly via their WireGuard IP addresses
+- ❌ Cannot resolve Kubernetes service DNS names by default
+
+To enable Kubernetes service DNS resolution from external VPN clients, see [K8S_SERVICE_DNS_VPN.md](./K8S_SERVICE_DNS_VPN.md) for configuration options.
 
 ## Important Notes
 
