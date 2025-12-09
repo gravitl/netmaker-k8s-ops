@@ -336,7 +336,7 @@ func (w *NetclientSidecarWebhook) addNetclientSidecarToPodTemplate(podSpec *core
 			},
 		},
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: &[]bool{true}[0],
+			// Privileged: &[]bool{true}[0],
 			Capabilities: &corev1.Capabilities{
 				Add: []corev1.Capability{
 					"NET_ADMIN",
@@ -379,11 +379,6 @@ func (w *NetclientSidecarWebhook) addNetclientSidecarToPodTemplate(podSpec *core
 
 	// Note: hostNetwork is not required since containers in a pod share the network namespace.
 	// The WireGuard interface created by netclient will be accessible to all containers in the pod.
-}
-
-// addNetclientVolumes adds the required volumes for netclient (for Pod objects)
-func addNetclientVolumes(pod *corev1.Pod) {
-	addNetclientVolumesToPodSpec(&pod.Spec)
 }
 
 // addNetclientVolumesToPodSpec adds the required volumes for netclient to a pod spec

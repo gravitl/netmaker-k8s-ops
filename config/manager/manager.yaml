@@ -98,7 +98,6 @@ spec:
         - name: EXTERNAL_API_SYNC_INTERVAL
           value: "30"  # Sync interval in seconds
         securityContext:
-          allowPrivilegeEscalation: true
           capabilities:
             drop:
             - "ALL"
@@ -146,7 +145,6 @@ spec:
         - mountPath: /var/log
           name: log-netclient
         securityContext:
-          privileged: true
           capabilities:
             add:
             - NET_ADMIN
