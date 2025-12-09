@@ -1,0 +1,9 @@
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "netmaker-k8s-ops.namespace" . }}
+  labels:
+    {{- include "netmaker-k8s-ops.labels" . | nindent 4 }}
+    control-plane: controller-manager
+{{- end }}

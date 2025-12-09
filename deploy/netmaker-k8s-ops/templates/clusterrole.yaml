@@ -1,0 +1,87 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "netmaker-k8s-ops.fullname" . }}-role
+  labels:
+    {{- include "netmaker-k8s-ops.labels" . | nindent 4 }}
+rules:
+  {{- if .Values.rbac.useBroadPermissions }}
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+  {{- else }}
+  - apiGroups:
+    - network.netmaker.io
+    resources:
+    - netmakerops
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - network.netmaker.io
+    resources:
+    - netmakerops/finalizers
+    verbs:
+    - update
+  - apiGroups:
+    - network.netmaker.io
+    resources:
+    - netmakerops/status
+    verbs:
+    - get
+    - patch
+    - update
+  - apiGroups:
+    - ""
+    resources:
+    - pods
+    - services
+    - endpoints
+    - persistentvolumeclaims
+    - events
+    - configmaps
+    - secrets
+    verbs:
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete
+  - apiGroups:
+    - apps
+    resources:
+    - deployments
+    - daemonsets
+    - replicasets
+    - statefulsets
+    verbs:
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete
+  - apiGroups:
+    - batch
+    resources:
+    - jobs
+    - cronjobs
+    verbs:
+    - get
+    - list
+    - watch
+    - create
+    - update
+    - patch
+    - delete
+  {{- end }}
+{{- end }}

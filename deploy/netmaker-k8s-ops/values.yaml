@@ -5,7 +5,7 @@
 replicaCount: 1
 
 image:
-  repository: nginx
+  repository: netmaker-k8s-ops
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
@@ -13,6 +13,12 @@ image:
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
+
+# Namespace where the operator will be deployed
+namespace:
+  create: true
+  # If not set, will use release-name-system format
+  name: ""
 
 serviceAccount:
   # Specifies whether a service account should be created
@@ -28,45 +34,130 @@ podAnnotations: {}
 podSecurityContext: {}
   # fsGroup: 2000
 
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
+securityContext:
+  allowPrivilegeEscalation: true
+  capabilities:
+    drop:
+    - "ALL"
 
+# Manager container configuration
+manager:
+  args:
+    - --leader-elect
+    - --health-probe-bind-address=:8081
+    - --metrics-bind-address=0
+  env:
+    - name: IN_CLUSTER
+      value: "true"
+    - name: ENABLE_LEADER_ELECTION
+      value: "true"
+    - name: PROXY_SKIP_TLS_VERIFY
+      value: "true"
+    - name: PROXY_MODE
+      value: "auth"
+    # External API configuration
+    - name: EXTERNAL_API_SERVER_DOMAIN
+      value: ""
+    - name: EXTERNAL_API_TOKEN
+      value: ""
+    - name: EXTERNAL_API_SYNC_INTERVAL
+      value: "30"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Netclient sidecar configuration
+netclient:
+  enabled: true
+  image:
+    repository: gravitl/netclient
+    tag: v1.2.0
+    pullPolicy: IfNotPresent
+  token: ""  # Netmaker token - should be set via secret
+  env:
+    - name: DAEMON
+      value: "on"
+    - name: LOG_LEVEL
+      value: "info"
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# Webhook configuration
+webhook:
+  enabled: true
+  # Certificate configuration
+  cert:
+    # If using cert-manager, set this to the certificate name
+    # cert-manager.io/inject-ca-from: namespace/certificate-name
+    injectCAFrom: ""
+
+# Services configuration
 service:
-  type: ClusterIP
-  port: 80
+  # Webhook service
+  webhook:
+    enabled: true
+    type: ClusterIP
+    port: 443
+    targetPort: 9443
+  # Proxy service
+  proxy:
+    enabled: true
+    type: ClusterIP
+    port: 8085
+    targetPort: 8085
+  # Metrics service
+  metrics:
+    enabled: false
+    type: ClusterIP
+    port: 8443
+    targetPort: 8443
 
-ingress:
-  enabled: false
-  className: ""
-  annotations: {}
-    # kubernetes.io/ingress.class: nginx
-    # kubernetes.io/tls-acme: "true"
-  hosts:
-    - host: chart-example.local
-      paths:
-        - path: /
-          pathType: ImplementationSpecific
-  tls: []
-  #  - secretName: chart-example-tls
-  #    hosts:
-  #      - chart-example.local
+# RBAC configuration
+rbac:
+  create: true
+  # Use broad permissions (all resources, all verbs)
+  # Set to false to use minimal permissions
+  useBroadPermissions: true
 
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
+# Leader election configuration
+leaderElection:
+  enabled: true
+  # Leader election ID
+  id: "3820d23d.netmaker.io"
+
+# Health probes configuration
+probes:
+  startup:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 20
+  liveness:
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  readiness:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# Volumes configuration
+volumes:
+  # Host path for netclient config
+  netclientConfig:
+    hostPath: /etc/netclient
+    type: DirectoryOrCreate
+  # EmptyDir for netclient logs
+  netclientLogs:
+    enabled: true
 
 autoscaling:
   enabled: false
@@ -80,3 +171,9 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+# CRD installation
+# Note: CRDs should be installed separately before deploying the operator
+# or use helm install with --skip-crds flag and install CRDs manually
+crds:
+  install: false

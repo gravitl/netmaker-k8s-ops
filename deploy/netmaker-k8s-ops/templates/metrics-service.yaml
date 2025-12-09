@@ -1,0 +1,20 @@
+{{- if .Values.service.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "netmaker-k8s-ops.fullname" . }}-metrics-service
+  namespace: {{ include "netmaker-k8s-ops.namespace" . }}
+  labels:
+    {{- include "netmaker-k8s-ops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+spec:
+  ports:
+  - port: {{ .Values.service.metrics.port }}
+    targetPort: {{ .Values.service.metrics.targetPort }}
+    protocol: TCP
+    name: https
+  selector:
+    {{- include "netmaker-k8s-ops.selectorLabels" . | nindent 4 }}
+    control-plane: controller-manager
+  type: {{ .Values.service.metrics.type }}
+{{- end }}

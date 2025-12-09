@@ -1,0 +1,20 @@
+{{- if .Values.service.proxy.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "netmaker-k8s-ops.fullname" . }}-proxy-service
+  namespace: {{ include "netmaker-k8s-ops.namespace" . }}
+  labels:
+    {{- include "netmaker-k8s-ops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+spec:
+  ports:
+  - port: {{ .Values.service.proxy.port }}
+    targetPort: {{ .Values.service.proxy.targetPort }}
+    protocol: TCP
+    name: proxy
+  selector:
+    {{- include "netmaker-k8s-ops.selectorLabels" . | nindent 4 }}
+    control-plane: controller-manager
+  type: {{ .Values.service.proxy.type }}
+{{- end }}

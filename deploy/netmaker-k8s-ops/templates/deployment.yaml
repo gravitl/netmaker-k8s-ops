@@ -2,8 +2,10 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "netmaker-k8s-ops.fullname" . }}
+  namespace: {{ include "netmaker-k8s-ops.namespace" . }}
   labels:
     {{- include "netmaker-k8s-ops.labels" . | nindent 4 }}
+    control-plane: controller-manager
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
@@ -11,14 +13,17 @@ spec:
   selector:
     matchLabels:
       {{- include "netmaker-k8s-ops.selectorLabels" . | nindent 6 }}
+      control-plane: controller-manager
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        kubectl.kubernetes.io/default-container: manager
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "netmaker-k8s-ops.selectorLabels" . | nindent 8 }}
+        control-plane: controller-manager
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -28,25 +33,129 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: {{ .Chart.Name }}
+        - name: manager
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /manager
+          args:
+            {{- range .Values.manager.args }}
+            - {{ . }}
+            {{- end }}
           ports:
-            - name: http
-              containerPort: 80
+            - name: health
+              containerPort: 8081
               protocol: TCP
+            - name: proxy
+              containerPort: 8085
+              protocol: TCP
+            {{- if .Values.webhook.enabled }}
+            - name: webhook
+              containerPort: 9443
+              protocol: TCP
+            {{- end }}
+          env:
+            {{- range .Values.manager.env }}
+            - name: {{ .name }}
+              {{- if .valueFrom }}
+              valueFrom: {{- toYaml .valueFrom | nindent 16 }}
+              {{- else }}
+              value: {{ .value | quote }}
+              {{- end }}
+            {{- end }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          {{- if .Values.webhook.enabled }}
+          volumeMounts:
+            - name: cert
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+          {{- end }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          {{- end }}
           livenessProbe:
             httpGet:
-              path: /
-              port: http
+              path: /healthz
+              port: health
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
           readinessProbe:
             httpGet:
-              path: /
-              port: http
+              path: /readyz
+              port: health
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.manager.resources | nindent 12 }}
+        {{- if .Values.netclient.enabled }}
+        - name: netclient
+          image: "{{ .Values.netclient.image.repository }}:{{ .Values.netclient.image.tag }}"
+          imagePullPolicy: {{ .Values.netclient.image.pullPolicy }}
+          env:
+            {{- if .Values.netclient.token }}
+            - name: TOKEN
+              value: {{ .Values.netclient.token | quote }}
+            {{- end }}
+            {{- range .Values.netclient.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          volumeMounts:
+            - mountPath: /etc/netclient
+              name: etc-netclient
+            {{- if .Values.volumes.netclientLogs.enabled }}
+            - mountPath: /var/log
+              name: log-netclient
+            {{- end }}
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - NET_ADMIN
+                - SYS_MODULE
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "ip link show netmaker && ip addr show netmaker | grep inet"
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          resources:
+            {{- toYaml .Values.netclient.resources | nindent 12 }}
+        {{- end }}
+      volumes:
+        {{- if .Values.webhook.enabled }}
+        - name: cert
+          secret:
+            secretName: webhook-server-cert
+        {{- end }}
+        {{- if .Values.netclient.enabled }}
+        - hostPath:
+            path: {{ .Values.volumes.netclientConfig.hostPath }}
+            type: {{ .Values.volumes.netclientConfig.type }}
+          name: etc-netclient
+        {{- if .Values.volumes.netclientLogs.enabled }}
+        - emptyDir:
+            medium: Memory
+          name: log-netclient
+        {{- end }}
+        {{- end }}
+      terminationGracePeriodSeconds: 10
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
