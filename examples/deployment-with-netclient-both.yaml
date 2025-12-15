@@ -1,3 +1,10 @@
+# IMPORTANT: Create the PVC first before deploying this!
+# kubectl apply -f netclient-pvc-example.yaml
+#
+# The PVC name must match the annotation value: netmaker.io/pvc-name
+# If the PVC doesn't exist, the pod will fail to start.
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,7 +12,10 @@ metadata:
   labels:
     app: my-app
     netmaker.io/netclient: enabled  # This label triggers the webhook
-  #annotations:
+  annotations:
+    netmaker.io/pvc-name: netclient-pvc-app-with-netclient-both
+    # Note: Annotations can be on deployment metadata or pod template metadata.
+    # Pod template annotations take priority if both are present.
     # Optional: Custom secret configuration
     # netmaker.io/secret-name: netclient-token
     # netmaker.io/secret-key: token

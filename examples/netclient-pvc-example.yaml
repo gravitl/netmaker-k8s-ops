@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netclient-pvc-app-with-netclient-both
+  namespace: default  # Change to your namespace if different
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # Uncomment and configure storageClassName if you need a specific storage class
+  # storageClassName: standard
+

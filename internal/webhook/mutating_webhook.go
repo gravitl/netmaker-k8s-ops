@@ -10,6 +10,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -108,7 +109,16 @@ func (w *NetclientSidecarWebhook) handleDeployment(ctx context.Context, req admi
 
 	// Add netclient sidecar to pod template
 	modifiedDeployment := deployment.DeepCopy()
-	w.addNetclientSidecarToPodTemplate(&modifiedDeployment.Spec.Template.Spec, deployment.Labels, deployment.Annotations, req.Namespace)
+	// Merge annotations: pod template annotations take priority over deployment annotations
+	mergedAnnotations := mergeAnnotations(deployment.Annotations, deployment.Spec.Template.Annotations)
+	mergedLabels := mergeLabels(deployment.Labels, deployment.Spec.Template.Labels)
+	klog.Info("Processing deployment for netclient injection",
+		"deployment", deployment.Name,
+		"namespace", req.Namespace,
+		"deploymentAnnotations", deployment.Annotations,
+		"podTemplateAnnotations", deployment.Spec.Template.Annotations,
+		"mergedAnnotations", mergedAnnotations)
+	w.addNetclientSidecarToPodTemplate(&modifiedDeployment.Spec.Template.Spec, mergedLabels, mergedAnnotations, req.Namespace)
 
 	return admission.Patched("netclient sidecar added to deployment", jsonpatch.Operation{
 		Operation: "replace",
@@ -136,7 +146,10 @@ func (w *NetclientSidecarWebhook) handleStatefulSet(ctx context.Context, req adm
 
 	// Add netclient sidecar to pod template
 	modifiedStatefulSet := statefulSet.DeepCopy()
-	w.addNetclientSidecarToPodTemplate(&modifiedStatefulSet.Spec.Template.Spec, statefulSet.Labels, statefulSet.Annotations, req.Namespace)
+	// Merge annotations: pod template annotations take priority over statefulset annotations
+	mergedAnnotations := mergeAnnotations(statefulSet.Annotations, statefulSet.Spec.Template.Annotations)
+	mergedLabels := mergeLabels(statefulSet.Labels, statefulSet.Spec.Template.Labels)
+	w.addNetclientSidecarToPodTemplate(&modifiedStatefulSet.Spec.Template.Spec, mergedLabels, mergedAnnotations, req.Namespace)
 
 	return admission.Patched("netclient sidecar added to statefulset", jsonpatch.Operation{
 		Operation: "replace",
@@ -164,7 +177,10 @@ func (w *NetclientSidecarWebhook) handleDaemonSet(ctx context.Context, req admis
 
 	// Add netclient sidecar to pod template
 	modifiedDaemonSet := daemonSet.DeepCopy()
-	w.addNetclientSidecarToPodTemplate(&modifiedDaemonSet.Spec.Template.Spec, daemonSet.Labels, daemonSet.Annotations, req.Namespace)
+	// Merge annotations: pod template annotations take priority over daemonset annotations
+	mergedAnnotations := mergeAnnotations(daemonSet.Annotations, daemonSet.Spec.Template.Annotations)
+	mergedLabels := mergeLabels(daemonSet.Labels, daemonSet.Spec.Template.Labels)
+	w.addNetclientSidecarToPodTemplate(&modifiedDaemonSet.Spec.Template.Spec, mergedLabels, mergedAnnotations, req.Namespace)
 
 	return admission.Patched("netclient sidecar added to daemonset", jsonpatch.Operation{
 		Operation: "replace",
@@ -192,7 +208,10 @@ func (w *NetclientSidecarWebhook) handleJob(ctx context.Context, req admission.R
 
 	// Add netclient sidecar to pod template
 	modifiedJob := job.DeepCopy()
-	w.addNetclientSidecarToPodTemplate(&modifiedJob.Spec.Template.Spec, job.Labels, job.Annotations, req.Namespace)
+	// Merge annotations: pod template annotations take priority over job annotations
+	mergedAnnotations := mergeAnnotations(job.Annotations, job.Spec.Template.Annotations)
+	mergedLabels := mergeLabels(job.Labels, job.Spec.Template.Labels)
+	w.addNetclientSidecarToPodTemplate(&modifiedJob.Spec.Template.Spec, mergedLabels, mergedAnnotations, req.Namespace)
 
 	return admission.Patched("netclient sidecar added to job", jsonpatch.Operation{
 		Operation: "replace",
@@ -220,7 +239,10 @@ func (w *NetclientSidecarWebhook) handleReplicaSet(ctx context.Context, req admi
 
 	// Add netclient sidecar to pod template
 	modifiedReplicaSet := replicaSet.DeepCopy()
-	w.addNetclientSidecarToPodTemplate(&modifiedReplicaSet.Spec.Template.Spec, replicaSet.Labels, replicaSet.Annotations, req.Namespace)
+	// Merge annotations: pod template annotations take priority over replicaset annotations
+	mergedAnnotations := mergeAnnotations(replicaSet.Annotations, replicaSet.Spec.Template.Annotations)
+	mergedLabels := mergeLabels(replicaSet.Labels, replicaSet.Spec.Template.Labels)
+	w.addNetclientSidecarToPodTemplate(&modifiedReplicaSet.Spec.Template.Spec, mergedLabels, mergedAnnotations, req.Namespace)
 
 	return admission.Patched("netclient sidecar added to replicaset", jsonpatch.Operation{
 		Operation: "replace",
@@ -375,14 +397,14 @@ func (w *NetclientSidecarWebhook) addNetclientSidecarToPodTemplate(podSpec *core
 	podSpec.Containers = append(podSpec.Containers, netclientContainer)
 
 	// Add required volumes if they don't exist
-	addNetclientVolumesToPodSpec(podSpec)
+	w.addNetclientVolumesToPodSpec(podSpec, namespace, labels, annotations)
 
 	// Note: hostNetwork is not required since containers in a pod share the network namespace.
 	// The WireGuard interface created by netclient will be accessible to all containers in the pod.
 }
 
 // addNetclientVolumesToPodSpec adds the required volumes for netclient to a pod spec
-func addNetclientVolumesToPodSpec(podSpec *corev1.PodSpec) {
+func (w *NetclientSidecarWebhook) addNetclientVolumesToPodSpec(podSpec *corev1.PodSpec, namespace string, labels map[string]string, annotations map[string]string) {
 	// Check if volumes already exist
 	hasEtcNetclient := false
 	hasLogNetclient := false
@@ -396,21 +418,57 @@ func addNetclientVolumesToPodSpec(podSpec *corev1.PodSpec) {
 		}
 	}
 
-	// Add etc-netclient volume
-	// Use EmptyDir instead of HostPath to ensure each pod gets its own isolated
-	// configuration directory. This prevents multiple netclient instances from
-	// sharing the same identity and IP address.
-	if !hasEtcNetclient {
-		etcVolume := corev1.Volume{
-			Name: "etc-netclient",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
-		}
-		podSpec.Volumes = append(podSpec.Volumes, etcVolume)
+	// Get PVC name from pod annotation, environment variable, or use EmptyDir
+	pvcName := getPVCNameFromPod(annotations, namespace)
+
+	// Debug logging
+	if len(annotations) > 0 {
+		klog.Info("Processing netclient volumes", "annotations", annotations, "pvcName", pvcName, "namespace", namespace)
+	} else {
+		klog.Info("No annotations found for netclient PVC configuration", "namespace", namespace)
 	}
 
-	// Add log-netclient volume
+	// If PVC is specified, ensure it exists (create if it doesn't)
+	if pvcName != "" && w.client != nil {
+		if err := w.ensurePVCExists(pvcName, namespace); err != nil {
+			klog.Error(err, "Failed to ensure PVC exists, falling back to EmptyDir", "pvc", pvcName, "namespace", namespace)
+			pvcName = "" // Fall back to EmptyDir if PVC creation fails
+		}
+	}
+
+	// Add etc-netclient volume
+	// Use PersistentVolumeClaim if configured, otherwise use EmptyDir for backward compatibility
+	// EmptyDir ensures each pod gets its own isolated configuration directory when PVC is not used.
+	if !hasEtcNetclient {
+		var etcVolume corev1.Volume
+		if pvcName != "" {
+			// Use PersistentVolumeClaim for persistent storage
+			etcVolume = corev1.Volume{
+				Name: "etc-netclient",
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: pvcName,
+						ReadOnly:  false,
+					},
+				},
+			}
+			klog.Info("Using PersistentVolumeClaim for netclient", "pvc", pvcName, "namespace", namespace)
+		} else {
+			// Fallback to EmptyDir for backward compatibility
+			etcVolume = corev1.Volume{
+				Name: "etc-netclient",
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			}
+			klog.Info("Using EmptyDir for netclient (no PVC configured)", "namespace", namespace)
+		}
+		podSpec.Volumes = append(podSpec.Volumes, etcVolume)
+	} else {
+		klog.Info("etc-netclient volume already exists, skipping", "namespace", namespace)
+	}
+
+	// Add log-netclient volume (always use EmptyDir with Memory medium for logs)
 	if !hasLogNetclient {
 		logVolume := corev1.Volume{
 			Name: "log-netclient",
@@ -422,6 +480,104 @@ func addNetclientVolumesToPodSpec(podSpec *corev1.PodSpec) {
 		}
 		podSpec.Volumes = append(podSpec.Volumes, logVolume)
 	}
+}
+
+// ensurePVCExists ensures that the PVC exists, creating it if it doesn't
+func (w *NetclientSidecarWebhook) ensurePVCExists(pvcName, namespace string) error {
+	if w.client == nil {
+		return fmt.Errorf("client not initialized")
+	}
+
+	// Check if PVC already exists
+	pvc := &corev1.PersistentVolumeClaim{}
+	namespacedName := types.NamespacedName{
+		Name:      pvcName,
+		Namespace: namespace,
+	}
+
+	err := w.client.Get(context.Background(), namespacedName, pvc)
+	if err == nil {
+		// PVC exists, nothing to do
+		klog.Info("PVC already exists", "pvc", pvcName, "namespace", namespace)
+		return nil
+	}
+
+	// Check if error is "not found" - if so, create the PVC
+	if client.IgnoreNotFound(err) == nil {
+		// PVC doesn't exist, create it
+		klog.Info("Creating PVC", "pvc", pvcName, "namespace", namespace)
+
+		// Get PVC configuration from environment variables or use defaults
+		storageSize := getEnvOrDefault("NETCLIENT_PVC_STORAGE_SIZE", "1Gi")
+		storageClass := getEnvOrDefault("NETCLIENT_PVC_STORAGE_CLASS", "") // Empty means use default
+
+		// Create PVC spec
+		pvc = &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pvcName,
+				Namespace: namespace,
+				Labels: map[string]string{
+					"app.kubernetes.io/component":  "netclient",
+					"app.kubernetes.io/managed-by": "netmaker-k8s-ops-webhook",
+				},
+			},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{
+					corev1.ReadWriteOnce,
+				},
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: resource.MustParse(storageSize),
+					},
+				},
+			},
+		}
+
+		// Set storage class if specified
+		if storageClass != "" {
+			pvc.Spec.StorageClassName = &storageClass
+		}
+
+		// Create the PVC
+		if err := w.client.Create(context.Background(), pvc); err != nil {
+			return fmt.Errorf("failed to create PVC %s in namespace %s: %w", pvcName, namespace, err)
+		}
+
+		klog.Info("Successfully created PVC", "pvc", pvcName, "namespace", namespace, "storageSize", storageSize)
+		return nil
+	}
+
+	// Some other error occurred
+	return fmt.Errorf("failed to check PVC existence: %w", err)
+}
+
+// getPVCNameFromPod gets the PVC name from pod annotations or environment variable
+func getPVCNameFromPod(annotations map[string]string, namespace string) string {
+	// Check if pod has custom PVC name annotation
+	if annotations != nil {
+		if pvcName, exists := annotations["netmaker.io/pvc-name"]; exists && pvcName != "" {
+			klog.Info("Found PVC name from annotation", "pvc", pvcName, "annotation", "netmaker.io/pvc-name")
+			return pvcName
+		}
+		// Check for namespace-specific PVC annotation
+		nsAnnotation := fmt.Sprintf("netmaker.io/pvc-name.%s", namespace)
+		if pvcName, exists := annotations[nsAnnotation]; exists && pvcName != "" {
+			klog.Info("Found PVC name from namespace-specific annotation", "pvc", pvcName, "annotation", nsAnnotation)
+			return pvcName
+		}
+		klog.V(2).Info("No PVC annotation found", "checkedAnnotations", []string{"netmaker.io/pvc-name", nsAnnotation})
+	}
+
+	// Fallback to environment variable or default
+	envPVC := getEnvOrDefault("NETCLIENT_PVC_NAME", "")
+	if envPVC != "" {
+		klog.Info("Using PVC name from environment variable", "pvc", envPVC)
+		return envPVC
+	}
+
+	// Default to empty string to maintain backward compatibility (use EmptyDir)
+	klog.V(2).Info("No PVC configured, will use EmptyDir")
+	return ""
 }
 
 // getNetclientTokenFromSecret reads the netclient token from a Kubernetes secret
@@ -502,4 +658,43 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// mergeAnnotations merges two annotation maps, with the second map taking priority
+func mergeAnnotations(base, override map[string]string) map[string]string {
+	result := make(map[string]string)
+
+	// Copy base annotations (ranging over nil map is safe in Go)
+	for k, v := range base {
+		result[k] = v
+	}
+
+	// Override with pod template annotations (ranging over nil map is safe in Go)
+	for k, v := range override {
+		result[k] = v
+	}
+
+	// Debug: log if we found the PVC annotation
+	if pvcName, exists := result["netmaker.io/pvc-name"]; exists {
+		klog.Info("Found netmaker.io/pvc-name in merged annotations", "pvc", pvcName)
+	}
+
+	return result
+}
+
+// mergeLabels merges two label maps, with the second map taking priority
+func mergeLabels(base, override map[string]string) map[string]string {
+	result := make(map[string]string)
+
+	// Copy base labels (ranging over nil map is safe in Go)
+	for k, v := range base {
+		result[k] = v
+	}
+
+	// Override with pod template labels (ranging over nil map is safe in Go)
+	for k, v := range override {
+		result[k] = v
+	}
+
+	return result
 }

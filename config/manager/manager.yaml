@@ -7,6 +7,42 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: system
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netclient-pvc
+  namespace: system
+  labels:
+    app.kubernetes.io/name: netmaker-k8s-ops
+    app.kubernetes.io/component: netclient
+  # Note: This PVC persists independently of the Deployment.
+  # When redeploying, the existing PVC will be reused, preserving all netclient configuration.
+  # 
+  # IMPORTANT: ReadWriteOnce access mode means only ONE pod can use this volume at a time.
+  # This is why the Deployment uses "Recreate" strategy instead of "RollingUpdate".
+  # For multi-replica deployments, each pod needs its own PVC or use ReadWriteMany (if supported).
+  # 
+  # WARNING: Deleting this PVC may result in data loss!
+  # - If the PersistentVolume's reclaimPolicy is "Delete" (default for dynamic provisioning),
+  #   deleting the PVC will also delete the PersistentVolume and ALL DATA will be lost.
+  # - If the reclaimPolicy is "Retain", the PV will remain but in "Released" state.
+  # 
+  # To check the reclaim policy: kubectl get pv $(kubectl get pvc netclient-pvc -n system -o jsonpath='{.spec.volumeName}') -o jsonpath='{.spec.persistentVolumeReclaimPolicy}'
+  # To preserve data, change reclaim policy to "Retain" before deleting PVC:
+  #   kubectl patch pv <pv-name> -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
+  # 
+  # To start fresh, manually delete the PVC: kubectl delete pvc netclient-pvc -n system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # Uncomment and configure storageClassName if you need a specific storage class
+  # storageClassName: standard
+  # Optional: To reuse a specific existing PersistentVolume, uncomment and set:
+  # volumeName: existing-pv-name
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,6 +59,10 @@ spec:
   replicas: 1
   # For multi-replica deployments, uncomment the following line:
   # replicas: 2
+  # IMPORTANT: When using ReadWriteOnce PVC, use Recreate strategy to avoid Multi-Attach errors
+  # RollingUpdate will try to start new pods before terminating old ones, causing volume conflicts
+  strategy:
+    type: Recreate
   template:
     metadata:
       annotations:
@@ -132,6 +172,7 @@ spec:
             memory: 64Mi
       - name: netclient
         image: gravitl/netclient:v1.2.0
+        imagePullPolicy: Always
         env:
         - name: TOKEN
           value: "eyJzZXJ2ZXIiOiJhcGkubm0uMTg4LTE2Ni0xODEtMjA1Lm5pcC5pbyIsInZhbHVlIjoiR0NRU0pJRUhaNFJVT1pQQk1JWjRZNk9WN0JLV0NYT1MifQ=="  # Set your Netmaker token here
@@ -170,10 +211,9 @@ spec:
         - name: cert
           secret:
             secretName: webhook-server-cert
-        - hostPath:
-            path: /etc/netclient
-            type: DirectoryOrCreate
-          name: etc-netclient
+        - name: etc-netclient
+          persistentVolumeClaim:
+            claimName: netclient-pvc
         - emptyDir:
             medium: Memory
           name: log-netclient
