@@ -169,6 +169,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Register the egress proxy controller for Services
+	if err = (&controller.EgressProxyReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "EgressProxy")
+		os.Exit(1)
+	}
+	setupLog.Info("registered egress proxy controller for Services")
+
 	// Register the netclient sidecar webhook for all supported resource types
 	netclientWebhook := netmakerwebhook.NewNetclientSidecarWebhook()
 

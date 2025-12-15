@@ -1,0 +1,94 @@
+# Example: Expose Netmaker API Service to Kubernetes Cluster
+# This Service creates an egress proxy that routes traffic to a Netmaker device
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: netmaker-api-egress
+  namespace: default
+  annotations:
+    # Enable egress proxy functionality
+    netmaker.io/egress: "enabled"
+    # Option 1: Use Netmaker device IP address
+    netmaker.io/egress-target-ip: "10.0.0.100"
+    # Option 2: Use Netmaker device DNS name (uncomment to use DNS instead)
+    # netmaker.io/egress-target-dns: "api.netmaker.internal"
+spec:
+  ports:
+  - name: https
+    port: 443
+    targetPort: 443  # This is the port on the Netmaker device (standard Kubernetes way)
+    protocol: TCP
+  # Note: The selector is optional - the controller manages endpoints directly
+  # But including it helps with Service discovery
+  selector:
+    app: netmaker-egress-proxy
+    service-name: netmaker-api-egress
+  type: ClusterIP
+---
+# Example: Expose Netmaker Database Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: netmaker-db-egress
+  namespace: default
+  annotations:
+    netmaker.io/egress: "enabled"
+    netmaker.io/egress-target-dns: "db.netmaker.internal"
+spec:
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432  # Port on the Netmaker database device
+    protocol: TCP
+  selector:
+    app: netmaker-egress-proxy
+    service-name: netmaker-db-egress
+  type: ClusterIP
+---
+# Example: Expose Netmaker Application with Multiple Ports
+apiVersion: v1
+kind: Service
+metadata:
+  name: netmaker-app-egress
+  namespace: default
+  annotations:
+    netmaker.io/egress: "enabled"
+    netmaker.io/egress-target-ip: "10.0.0.200"
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: 443
+    protocol: TCP
+  selector:
+    app: netmaker-egress-proxy
+    service-name: netmaker-app-egress
+  type: ClusterIP
+---
+# Example: Usage - Pod accessing Netmaker service via egress proxy
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-egress-access
+  namespace: default
+spec:
+  containers:
+  - name: curl
+    image: curlimages/curl:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "Testing egress proxy access..."
+      # Access Netmaker API via the Kubernetes Service
+      curl -k https://netmaker-api-egress.default.svc.cluster.local/api/health
+      # Access Netmaker DB (example)
+      # psql -h netmaker-db-egress.default.svc.cluster.local -U postgres
+      sleep 3600
+  restartPolicy: Never
+
