@@ -13,6 +13,10 @@ metadata:
     netmaker.io/egress-target-ip: "10.0.0.100"
     # Option 2: Use Netmaker device DNS name (uncomment to use DNS instead)
     # netmaker.io/egress-target-dns: "api.netmaker.internal"
+    # Optional: Custom secret configuration for netclient token
+    # Note: Secrets are always read from operator namespace (netmaker-k8s-ops-system) for security
+    # netmaker.io/secret-name: "custom-netclient-token"      # Default: netclient-token
+    # netmaker.io/secret-key: "token"                         # Default: token
 spec:
   ports:
   - name: https

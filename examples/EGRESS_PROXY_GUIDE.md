@@ -50,6 +50,10 @@ metadata:
   annotations:
     netmaker.io/egress: "enabled"
     netmaker.io/egress-target-dns: "api.internal.netmaker"  # Netmaker device DNS name
+    # Optional: Custom secret configuration for netclient token
+    # Note: Secrets are always read from operator namespace (netmaker-k8s-ops-system) for security
+    # netmaker.io/secret-name: "custom-netclient-token"  # Default: netclient-token
+    # netmaker.io/secret-key: "token"                    # Default: token
 spec:
   ports:
   - port: 8080

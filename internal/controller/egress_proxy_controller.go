@@ -134,7 +134,7 @@ func (r *EgressProxyReconciler) ensureProxyPod(ctx context.Context, service *cor
 	// Create new pod
 	logger.Info("Creating egress proxy pod", "pod", podName, "targetIP", targetIP, "targetDNS", targetDNS)
 
-	pod := r.buildProxyPod(service, podName, targetIP, targetDNS)
+	pod := r.buildProxyPod(ctx, service, podName, targetIP, targetDNS)
 
 	if err := r.Create(ctx, pod); err != nil {
 		return fmt.Errorf("failed to create proxy pod: %w", err)
@@ -145,10 +145,11 @@ func (r *EgressProxyReconciler) ensureProxyPod(ctx context.Context, service *cor
 
 // buildProxyPod builds the egress proxy pod specification
 // Target ports are read from Service spec's targetPort (standard Kubernetes way)
-func (r *EgressProxyReconciler) buildProxyPod(service *corev1.Service, podName string, targetIP, targetDNS string) *corev1.Pod {
+func (r *EgressProxyReconciler) buildProxyPod(ctx context.Context, service *corev1.Service, podName string, targetIP, targetDNS string) *corev1.Pod {
 	// Get configuration from environment or use defaults
 	netclientImage := getEnvOrDefault("NETCLIENT_IMAGE", "gravitl/netclient:v1.2.0")
-	netclientToken := getEnvOrDefault("NETCLIENT_TOKEN", "")
+	// Try to get token from secret first (checks Service annotations), fallback to environment variable
+	netclientToken := r.getNetclientToken(ctx, service)
 	// Use socat for simple TCP forwarding - much lighter than nginx
 	proxyImage := getEnvOrDefault("EGRESS_PROXY_IMAGE", "alpine/socat:latest")
 
@@ -180,11 +181,7 @@ func (r *EgressProxyReconciler) buildProxyPod(service *corev1.Service, podName s
 				{
 					Name:  "netclient",
 					Image: netclientImage,
-					Env: []corev1.EnvVar{
-						{Name: "TOKEN", Value: netclientToken},
-						{Name: "DAEMON", Value: "on"},
-						{Name: "LOG_LEVEL", Value: "info"},
-					},
+					Env:   r.buildNetclientEnvVars(ctx, service, netclientToken),
 					VolumeMounts: []corev1.VolumeMount{
 						{Name: "etc-netclient", MountPath: "/etc/netclient"},
 						{Name: "log-netclient", MountPath: "/var/log"},
@@ -423,6 +420,109 @@ func (r *EgressProxyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Service{}).
 		Complete(r)
+}
+
+// getNetclientToken gets the netclient token from secret
+// Checks Service annotations first, then environment variables for secret name/key
+func (r *EgressProxyReconciler) getNetclientToken(ctx context.Context, service *corev1.Service) string {
+	// Get secret configuration from Service annotations or environment variables
+	secretName := r.getSecretNameFromService(service)
+	secretKey := r.getSecretKeyFromService(service)
+	secretNamespace := r.getSecretNamespaceFromService(service)
+
+	secret := &corev1.Secret{}
+	secretNamespacedName := types.NamespacedName{
+		Name:      secretName,
+		Namespace: secretNamespace,
+	}
+
+	if err := r.Get(ctx, secretNamespacedName, secret); err == nil {
+		if tokenBytes, exists := secret.Data[secretKey]; exists {
+			return string(tokenBytes)
+		}
+	}
+
+	// Secret not found or key doesn't exist - return empty (will fail at pod creation)
+	return ""
+}
+
+// getSecretNameFromService gets the secret name from Service annotations or uses default
+// Default secret name is "netclient-token" in operator namespace
+func (r *EgressProxyReconciler) getSecretNameFromService(service *corev1.Service) string {
+	if service.Annotations != nil {
+		if secretName, exists := service.Annotations["netmaker.io/secret-name"]; exists && secretName != "" {
+			return secretName
+		}
+	}
+	// Default secret name
+	return getEnvOrDefault("NETCLIENT_SECRET_NAME", "netclient-token")
+}
+
+// getSecretKeyFromService gets the secret key from Service annotations or environment variable
+func (r *EgressProxyReconciler) getSecretKeyFromService(service *corev1.Service) string {
+	if service.Annotations != nil {
+		if secretKey, exists := service.Annotations["netmaker.io/secret-key"]; exists && secretKey != "" {
+			return secretKey
+		}
+	}
+	return getEnvOrDefault("NETCLIENT_SECRET_KEY", "token")
+}
+
+// getSecretNamespaceFromService gets the secret namespace - always uses operator namespace for security
+// Secrets can only be read from the operator namespace
+func (r *EgressProxyReconciler) getSecretNamespaceFromService(service *corev1.Service) string {
+	// Always use operator namespace - ignore any namespace specified in annotations for security
+	operatorNamespace := getEnvOrDefault("OPERATOR_NAMESPACE", "netmaker-k8s-ops-system")
+	return operatorNamespace
+}
+
+// buildNetclientEnvVars builds environment variables for netclient container
+// Uses secret if available, otherwise falls back to direct value
+// Checks Service annotations first for secret configuration
+func (r *EgressProxyReconciler) buildNetclientEnvVars(ctx context.Context, service *corev1.Service, tokenValue string) []corev1.EnvVar {
+	// Get secret configuration from Service annotations or environment variables
+	secretName := r.getSecretNameFromService(service)
+	secretKey := r.getSecretKeyFromService(service)
+	secretNamespace := r.getSecretNamespaceFromService(service)
+
+	// Check if secret exists
+	secret := &corev1.Secret{}
+	secretNamespacedName := types.NamespacedName{
+		Name:      secretName,
+		Namespace: secretNamespace,
+	}
+
+	envVars := []corev1.EnvVar{
+		{Name: "DAEMON", Value: "on"},
+		{Name: "LOG_LEVEL", Value: "info"},
+	}
+
+	// Try to use secret if it exists
+	if err := r.Get(ctx, secretNamespacedName, secret); err == nil {
+		if _, exists := secret.Data[secretKey]; exists {
+			// Use secret reference
+			envVars = append(envVars, corev1.EnvVar{
+				Name: "TOKEN",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: secretName,
+						},
+						Key: secretKey,
+					},
+				},
+			})
+			return envVars
+		}
+	}
+
+	// Secret not found - use empty value (will cause netclient to fail, which is expected)
+	envVars = append(envVars, corev1.EnvVar{
+		Name:  "TOKEN",
+		Value: "",
+	})
+
+	return envVars
 }
 
 // getEnvOrDefault gets an environment variable or returns a default value

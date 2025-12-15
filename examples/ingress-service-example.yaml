@@ -1,0 +1,77 @@
+# Example: Expose Kubernetes Service to Netmaker Network
+# This Service creates an ingress proxy that allows Netmaker devices to access your K8s service
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-api-ingress
+  namespace: default
+  annotations:
+    # Enable ingress proxy functionality
+    netmaker.io/ingress: "enabled"
+    # Optional: Specify DNS name for this service on Netmaker network
+    netmaker.io/ingress-dns-name: "api.k8s.netmaker.internal"
+    # Optional: Specify Netmaker IP to bind to (defaults to WireGuard interface IP)
+    # netmaker.io/ingress-bind-ip: "10.0.0.50"
+    # Optional: Custom secret configuration for netclient token
+    # Note: Secrets are always read from operator namespace (netmaker-k8s-ops-system) for security
+    # netmaker.io/secret-name: "custom-netclient-token"      # Default: netclient-token
+    # netmaker.io/secret-key: "token"                         # Default: token
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080  # Port your application listens on
+    protocol: TCP
+  selector:
+    app: my-api  # Your application selector
+  type: ClusterIP
+---
+# Example: Expose Kubernetes Database to Netmaker Network
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-db-ingress
+  namespace: default
+  annotations:
+    netmaker.io/ingress: "enabled"
+spec:
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+    protocol: TCP
+  selector:
+    app: postgres
+  type: ClusterIP
+---
+# Example: Your application deployment (target of the ingress Service)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-api
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: my-api
+  template:
+    metadata:
+      labels:
+        app: my-api
+    spec:
+      containers:
+      - name: api
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+

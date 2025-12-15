@@ -1,8 +1,353 @@
-# netmaker-k8s-ops
-// TODO(user): Add simple overview of use/purpose
+# Netmaker Kubernetes Operator
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+A Kubernetes operator that seamlessly integrates Netmaker WireGuard networks with Kubernetes clusters, enabling secure bidirectional connectivity between Kubernetes workloads and Netmaker networks.
+
+## Overview
+
+The Netmaker K8s Operator provides multiple features to bridge Kubernetes clusters with Netmaker WireGuard networks:
+
+- **Netclient Sidecar Injection**: Automatically injects WireGuard netclient sidecars into pods
+- **Egress Proxy**: Expose Netmaker services to Kubernetes cluster workloads
+- **Ingress Proxy**: Expose Kubernetes services to Netmaker network devices
+- **API Proxy**: Secure access to Kubernetes API through WireGuard tunnels
+
+## Use Cases
+
+### 1. Netclient Sidecar Injection (Webhook)
+
+Automatically add WireGuard connectivity to any pod by labeling it. The webhook injects a `netclient` sidecar container that establishes a WireGuard connection to your Netmaker network.
+
+**Use Case**: Enable individual pods to connect to Netmaker networks without manual configuration.
+
+**Example**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  template:
+    metadata:
+      labels:
+        netmaker.io/netclient: "enabled"
+    spec:
+      containers:
+      - name: app
+        image: my-app:latest
+```
+
+**Documentation**: [Webhook Usage Guide](WEBHOOK_USAGE.md)
+
+### 2. Egress Proxy (Cluster Egress)
+
+Expose services that are external to your Kubernetes cluster but available in your Netmaker network, making them accessible to your Kubernetes workloads.
+
+**Use Case**: Allow Kubernetes applications to access Netmaker services (APIs, databases, etc.) using standard Kubernetes Service names.
+
+**Example**:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: netmaker-api-egress
+  annotations:
+    netmaker.io/egress: "enabled"
+    netmaker.io/egress-target-dns: "api.netmaker.internal"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080  # Port on Netmaker device
+```
+
+**How it works**:
+- Creates a proxy pod with netclient sidecar
+- Proxy listens on Kubernetes Service port
+- Forwards traffic to Netmaker device via WireGuard
+- Kubernetes workloads access via Service name
+
+**Documentation**: [Egress Proxy Guide](examples/EGRESS_PROXY_GUIDE.md)
+
+### 3. Ingress Proxy (Cluster Ingress)
+
+Expose Kubernetes services to devices on your Netmaker network, allowing Netmaker devices to access Kubernetes workloads.
+
+**Use Case**: Enable Netmaker network devices to access Kubernetes services (APIs, databases, web apps) using Netmaker IPs or DNS names.
+
+**Example**:
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-api-ingress
+  annotations:
+    netmaker.io/ingress: "enabled"
+    netmaker.io/ingress-dns-name: "api.k8s.netmaker.internal"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: my-api
+```
+
+**How it works**:
+- Creates a proxy pod with netclient sidecar
+- Proxy listens on Netmaker network IP (WireGuard interface)
+- Forwards traffic to Kubernetes Service
+- Netmaker devices access via Netmaker IP or DNS
+
+**Documentation**: [Ingress Proxy Guide](examples/INGRESS_PROXY_GUIDE.md)
+
+### 4. API Proxy
+
+Secure reverse proxy for accessing Kubernetes API servers through WireGuard tunnels with user impersonation and RBAC support.
+
+**Use Case**: Remote access to Kubernetes clusters via WireGuard with authentication and authorization.
+
+**Documentation**: [Proxy Usage Guide](PROXY_USAGE.md)
+
+## Key Differences: Ingress vs Egress
+
+| Feature | **Ingress Proxy** | **Egress Proxy** |
+|---------|------------------|------------------|
+| **Direction** | Netmaker → Kubernetes | Kubernetes → Netmaker |
+| **Use Case** | Expose K8s services to Netmaker network | Access Netmaker services from K8s |
+| **Proxy Listens On** | Netmaker network IP (WireGuard interface) | Kubernetes Service port |
+| **Proxy Forwards To** | Kubernetes Service (ClusterIP) | Netmaker device (IP/DNS) |
+| **Access Method** | Netmaker devices use Netmaker IP/DNS | K8s workloads use Service name |
+| **Annotation** | `netmaker.io/ingress: "enabled"` | `netmaker.io/egress: "enabled"` |
+| **Target Config** | `netmaker.io/ingress-dns-name` (optional) | `netmaker.io/egress-target-ip` or `netmaker.io/egress-target-dns` |
+| **Port Config** | Uses Service `port` and `targetPort` | Uses Service `targetPort` (port on Netmaker device) |
+
+### Visual Comparison
+
+**Egress Proxy Flow** (K8s → Netmaker):
+```
+K8s Pod → K8s Service → Egress Proxy Pod → WireGuard → Netmaker Device
+```
+
+**Ingress Proxy Flow** (Netmaker → K8s):
+```
+Netmaker Device → WireGuard → Ingress Proxy Pod → K8s Service → K8s Pod
+```
+
+## Quick Start
+
+### Prerequisites
+
+- Go v1.22.0+
+- Docker v17.03+
+- kubectl v1.11.3+
+- Kubernetes cluster v1.11.3+
+- Netmaker server with network configured
+- Netmaker token for joining the network
+
+### Installation
+
+1. **Build and push the operator image**:
+```bash
+make docker-build docker-push IMG=<your-registry>/netmaker-k8s-ops:tag
+```
+
+2. **Install CRDs**:
+```bash
+make install
+```
+
+3. **Deploy the operator**:
+```bash
+make deploy IMG=<your-registry>/netmaker-k8s-ops:tag
+```
+
+4. **Configure Netmaker token**:
+
+   **Option A: Direct environment variable** (quick start, not recommended for production):
+   ```yaml
+   # In config/manager/manager.yaml, netclient container section
+   env:
+   - name: TOKEN
+     value: "YOUR_NETMAKER_TOKEN_HERE"
+   ```
+
+   **Option B: Kubernetes Secret** (recommended for production):
+   ```bash
+   # Create secret
+   kubectl create secret generic netclient-token \
+     --from-literal=token="YOUR_NETMAKER_TOKEN_HERE" \
+     --namespace=netmaker-k8s-ops-system
+   
+   # Update config/manager/manager.yaml to use secret:
+   env:
+   - name: TOKEN
+     valueFrom:
+       secretKeyRef:
+         name: netclient-token
+         key: token
+   ```
+
+   See [Token Configuration Guide](TOKEN_CONFIGURATION.md) for all methods and best practices.
+
+5. **Verify deployment**:
+```bash
+kubectl get pods -n netmaker-k8s-ops-system
+```
+
+### Example: Enable Netclient Sidecar
+
+1. **Label a namespace** (if using webhook):
+```bash
+kubectl label namespace default netmaker.io/webhook=enabled
+```
+
+2. **Create a deployment with netclient label**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  template:
+    metadata:
+      labels:
+        netmaker.io/netclient: "enabled"
+    spec:
+      containers:
+      - name: app
+        image: nginx:latest
+```
+
+3. **Verify netclient sidecar is injected**:
+```bash
+kubectl get pod <pod-name> -o jsonpath='{.spec.containers[*].name}'
+# Should show: app netclient
+```
+
+### Example: Egress Proxy
+
+Create a Service to access a Netmaker API:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: netmaker-api-egress
+  annotations:
+    netmaker.io/egress: "enabled"
+    netmaker.io/egress-target-dns: "api.netmaker.internal"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+```
+
+Access from Kubernetes pods:
+```bash
+curl http://netmaker-api-egress:80
+```
+
+### Example: Ingress Proxy
+
+Expose a Kubernetes service to Netmaker network:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-api-ingress
+  annotations:
+    netmaker.io/ingress: "enabled"
+    netmaker.io/ingress-dns-name: "api.k8s.netmaker.internal"
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+  selector:
+    app: my-api
+```
+
+Access from Netmaker devices:
+```bash
+curl http://api.k8s.netmaker.internal:80
+```
+
+## Documentation
+
+- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Detailed deployment instructions
+- [Token Configuration Guide](TOKEN_CONFIGURATION.md) - How to pass Netmaker tokens (secrets, env vars, etc.)
+- [Webhook Usage](WEBHOOK_USAGE.md) - Netclient sidecar injection
+- [Egress Proxy Guide](examples/EGRESS_PROXY_GUIDE.md) - Expose Netmaker services to K8s
+- [Ingress Proxy Guide](examples/INGRESS_PROXY_GUIDE.md) - Expose K8s services to Netmaker
+- [Proxy Usage](PROXY_USAGE.md) - Kubernetes API proxy
+- [WireGuard Setup](WIREGUARD_SETUP.md) - WireGuard configuration
+- [Testing Guide](TESTING_GUIDE.md) - Testing and validation
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Netmaker Network                          │
+│                                                               │
+│  ┌──────────────┐         ┌──────────────┐                  │
+│  │ Netmaker     │         │ Netmaker     │                  │
+│  │ Device 1     │         │ Device 2     │                  │
+│  └──────┬───────┘         └──────┬───────┘                  │
+└─────────┼────────────────────────┼───────────────────────────┘
+          │                        │ WireGuard Tunnel
+          │                        │
+┌─────────┼────────────────────────┼───────────────────────────┐
+│         │                        │                           │
+│  ┌──────▼────────────────────────▼───────┐                  │
+│  │   Kubernetes Cluster                  │                  │
+│  │                                        │                  │
+│  │  ┌──────────────────────────────────┐ │                  │
+│  │  │  Ingress Proxy Pod               │ │                  │
+│  │  │  (netclient + socat)             │ │                  │
+│  │  └──────────┬───────────────────────┘ │                  │
+│  │             │                          │                  │
+│  │  ┌──────────▼───────────────────────┐ │                  │
+│  │  │  Kubernetes Service              │ │                  │
+│  │  └──────────┬───────────────────────┘ │                  │
+│  │             │                          │                  │
+│  │  ┌──────────▼───────────────────────┐ │                  │
+│  │  │  Application Pods                │ │                  │
+│  │  │  (with optional netclient)       │ │                  │
+│  │  └──────────────────────────────────┘ │                  │
+│  │                                        │                  │
+│  │  ┌──────────────────────────────────┐ │                  │
+│  │  │  Egress Proxy Pod                │ │                  │
+│  │  │  (netclient + socat)             │ │                  │
+│  │  └──────────────────────────────────┘ │                  │
+│  └────────────────────────────────────────┘                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Features
+
+- ✅ **Automatic Sidecar Injection**: Webhook-based netclient sidecar injection
+- ✅ **Egress Proxy**: Access Netmaker services from Kubernetes
+- ✅ **Ingress Proxy**: Expose Kubernetes services to Netmaker
+- ✅ **Persistent Volumes**: Support for PVC-based netclient configuration persistence
+- ✅ **Multi-Replica Support**: Deploy operator with multiple replicas
+- ✅ **RBAC Integration**: Full Kubernetes RBAC support
+- ✅ **Health Checks**: Built-in health and readiness endpoints
+- ✅ **Dynamic Configuration**: Annotation-based configuration
+
+## Uninstallation
+
+**Delete CR instances**:
+```bash
+kubectl delete -k config/samples/
+```
+
+**Delete CRDs**:
+```bash
+make uninstall
+```
+
+**Undeploy the operator**:
+```bash
+make undeploy
+```
 
 ## Getting Started
 
