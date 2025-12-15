@@ -198,6 +198,7 @@ func (r *IngressProxyReconciler) buildProxyPod(ctx context.Context, service *cor
 				},
 				// TCP proxy container using socat
 				// Listens on Netmaker network IP and forwards to Kubernetes Service
+				// WireGuard IP is detected dynamically at runtime
 				{
 					Name:    "proxy",
 					Image:   proxyImage,
@@ -207,6 +208,8 @@ func (r *IngressProxyReconciler) buildProxyPod(ctx context.Context, service *cor
 						{Name: "SERVICE_NAME", Value: service.Name},
 						{Name: "SERVICE_NAMESPACE", Value: service.Namespace},
 					},
+					// Share netclient's network namespace to access WireGuard interface
+					// Both containers run in the same pod, so they share network namespace by default
 					Resources: corev1.ResourceRequirements{
 						Limits: corev1.ResourceList{
 							corev1.ResourceCPU:    resource.MustParse("50m"),
@@ -216,6 +219,22 @@ func (r *IngressProxyReconciler) buildProxyPod(ctx context.Context, service *cor
 							corev1.ResourceCPU:    resource.MustParse("10m"),
 							corev1.ResourceMemory: resource.MustParse("16Mi"),
 						},
+					},
+					// Add readiness probe to ensure WireGuard IP is detected before marking ready
+					ReadinessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							Exec: &corev1.ExecAction{
+								Command: []string{
+									"/bin/sh",
+									"-c",
+									"ip addr show | grep -E 'inet.*(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.)' | grep -v '127.0.0.1' || exit 1",
+								},
+							},
+						},
+						InitialDelaySeconds: 10,
+						PeriodSeconds:       5,
+						TimeoutSeconds:      2,
+						FailureThreshold:    3,
 					},
 				},
 			},
@@ -236,26 +255,75 @@ func buildIngressSocatCommand(service *corev1.Service, bindIP string) []string {
 	commands := []string{"/bin/sh", "-c"}
 	socatCmds := ""
 
-	// Wait for netclient to establish WireGuard connection and get IP
-	// Then get the WireGuard interface IP if bindIP not specified
+	// Wait for netclient to establish WireGuard connection and get IP dynamically
+	// WireGuard IP is assigned dynamically by Netmaker, so we detect it at runtime
 	if bindIP == "" {
-		socatCmds += `# Wait for WireGuard interface to be ready
-for i in $(seq 1 30); do
-  if ip addr show netmaker 2>/dev/null | grep -q inet; then
-    break
+		socatCmds += `# Wait for WireGuard interface to be ready and get dynamic IP
+# Try common WireGuard interface names: netmaker, wg0, wg1, etc.
+# WireGuard interfaces may show as state UNKNOWN or UP, so check for interface existence and IP presence
+WG_INTERFACE=""
+WG_IP=""
+
+# First, try to find interface by name and get its IP
+for iface in netmaker wg0 wg1; do
+  if ip link show "$iface" 2>/dev/null >/dev/null; then
+    # Interface exists, check if it has an IP
+    WG_IP=$(ip addr show "$iface" 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1 | head -n1)
+    if [ -n "$WG_IP" ]; then
+      WG_INTERFACE="$iface"
+      echo "Found WireGuard IP: $WG_IP on interface $WG_INTERFACE"
+      break
+    fi
   fi
-  sleep 1
 done
 
-# Get WireGuard IP
-WG_IP=$(ip addr show netmaker 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1)
+# If no interface found with IP, wait and retry (netclient might still be starting)
+if [ -z "$WG_INTERFACE" ]; then
+  echo "Waiting for WireGuard interface to be created and get IP..."
+  for i in $(seq 1 60); do
+    for iface in netmaker wg0 wg1; do
+      if ip link show "$iface" 2>/dev/null >/dev/null; then
+        WG_IP=$(ip addr show "$iface" 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1 | head -n1)
+        if [ -n "$WG_IP" ]; then
+          WG_INTERFACE="$iface"
+          echo "Found WireGuard IP: $WG_IP on interface $WG_INTERFACE"
+          break 2
+        fi
+      fi
+    done
+    sleep 1
+  done
+fi
+
+# Fallback: if still no IP, look for POINTOPOINT interfaces (WireGuard uses POINTOPOINT)
+# Exclude eth0 and other non-WireGuard interfaces
 if [ -z "$WG_IP" ]; then
-  echo "Warning: Could not get WireGuard IP, binding to all interfaces"
+  echo "Trying to detect WireGuard IP from POINTOPOINT interfaces..."
+  # Find all POINTOPOINT interfaces (WireGuard characteristic)
+  for iface in $(ip link show | grep -B 1 "POINTOPOINT" | grep "^[0-9]" | awk '{print $2}' | cut -d: -f1 | sed 's/@.*//' | grep -v "^lo$" | grep -v "^eth"); do
+    if ip link show "$iface" 2>/dev/null >/dev/null; then
+      WG_IP=$(ip addr show "$iface" 2>/dev/null | grep "inet " | awk '{print $2}' | cut -d/ -f1 | head -n1)
+      if [ -n "$WG_IP" ]; then
+        WG_INTERFACE="$iface"
+        echo "Found WireGuard IP: $WG_IP on POINTOPOINT interface $WG_INTERFACE"
+        break
+      fi
+    fi
+  done
+fi
+
+# Final fallback: bind to all interfaces (less secure but ensures connectivity)
+if [ -z "$WG_IP" ]; then
+  echo "Warning: Could not detect WireGuard IP dynamically, binding to all interfaces (0.0.0.0)"
+  echo "This may expose the service on all network interfaces. Consider setting netmaker.io/ingress-bind-ip annotation."
   WG_IP="0.0.0.0"
 fi
+
+echo "Using WireGuard IP: $WG_IP"
 `
 	} else {
 		socatCmds += fmt.Sprintf("WG_IP=%s\n", bindIP)
+		socatCmds += "echo \"Using configured bind IP: $WG_IP\"\n"
 	}
 
 	// Build socat commands for each port

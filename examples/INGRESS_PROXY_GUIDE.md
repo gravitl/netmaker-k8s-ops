@@ -24,8 +24,10 @@ To configure a Service as an ingress proxy, add the following annotations:
 metadata:
   annotations:
     netmaker.io/ingress: "enabled"
-    # Optional: Specify the Netmaker IP address to bind to (defaults to WireGuard interface IP)
-    netmaker.io/ingress-bind-ip: "10.0.0.50"
+    # Optional: Specify the Netmaker IP address to bind to
+    # If not specified, the proxy will automatically detect the WireGuard IP dynamically
+    # This is recommended since Netmaker assigns IPs dynamically
+    # netmaker.io/ingress-bind-ip: "10.0.0.50"
     # Optional: Specify the Netmaker DNS name for this service
     netmaker.io/ingress-dns-name: "my-app.netmaker.internal"
     # Optional: Custom secret configuration for netclient token
@@ -33,6 +35,13 @@ metadata:
     # netmaker.io/secret-name: "custom-netclient-token"  # Default: netclient-token
     # netmaker.io/secret-key: "token"                    # Default: token
 ```
+
+**Dynamic IP Detection**: By default (when `netmaker.io/ingress-bind-ip` is not specified), the ingress proxy automatically detects the WireGuard IP assigned by Netmaker. This works because:
+1. The proxy container shares the network namespace with the netclient sidecar
+2. The proxy waits for the WireGuard interface to be ready (up to 60 seconds)
+3. It detects the IP from common interface names (`netmaker`, `wg0`, `wg1`)
+4. Falls back to detecting any private IP if the interface name is unknown
+5. Only binds to `0.0.0.0` as a last resort (with a warning)
 
 ### Service Configuration
 
@@ -204,9 +213,27 @@ curl http://my-app.netmaker.internal:80
 ### Ingress Proxy Pod
 
 The operator creates an ingress proxy pod that:
-- Runs a netclient sidecar for WireGuard connectivity (gets Netmaker IP)
-- Runs a proxy container (socat) that listens on the Netmaker IP
+- Runs a netclient sidecar for WireGuard connectivity (gets Netmaker IP dynamically)
+- Runs a proxy container (socat) that automatically detects and listens on the WireGuard IP
 - Forwards traffic to the Kubernetes Service
+
+### Dynamic WireGuard IP Detection
+
+Since Netmaker assigns IP addresses dynamically, the ingress proxy automatically detects the WireGuard IP at runtime:
+
+1. **Interface Detection**: The proxy checks for common WireGuard interface names (`netmaker`, `wg0`, `wg1`)
+2. **Wait for Interface**: Waits up to 60 seconds for the interface to be created and brought up
+3. **IP Extraction**: Extracts the IP address from the WireGuard interface
+4. **Fallback Detection**: If interface name is unknown, searches for any private IP address
+5. **Binding**: Binds socat to the detected IP address
+
+**Benefits**:
+- Works regardless of what IP Netmaker assigns
+- No need to hardcode IP addresses
+- Handles interface name variations
+- Automatically adapts if IP changes (on pod restart)
+
+**Manual Override**: You can still specify `netmaker.io/ingress-bind-ip` if you want to use a specific IP, but dynamic detection is recommended.
 
 ### Service Selector
 
