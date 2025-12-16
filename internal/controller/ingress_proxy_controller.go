@@ -251,7 +251,13 @@ func (r *IngressProxyReconciler) buildProxyPod(ctx context.Context, service *cor
 // buildIngressSocatCommand creates socat command for ingress proxying
 // Listens on Netmaker network IP and forwards to Kubernetes Service
 func buildIngressSocatCommand(service *corev1.Service, bindIP string) []string {
-	serviceAddr := fmt.Sprintf("%s.%s.svc.cluster.local", service.Name, service.Namespace)
+	// Use Service ClusterIP directly for more reliable connectivity
+	// Fallback to DNS if ClusterIP is not available (headless service)
+	serviceAddr := service.Spec.ClusterIP
+	if serviceAddr == "" || serviceAddr == "None" {
+		// Headless service - use DNS
+		serviceAddr = fmt.Sprintf("%s.%s.svc.cluster.local", service.Name, service.Namespace)
+	}
 	commands := []string{"/bin/sh", "-c"}
 	socatCmds := ""
 
@@ -330,6 +336,7 @@ echo "Using WireGuard IP: $WG_IP"
 	for _, port := range service.Spec.Ports {
 		servicePort := port.Port
 		// Forward to Service port (Service will route to pods via targetPort)
+		socatCmds += fmt.Sprintf("echo \"Starting socat proxy: $WG_IP:%d -> %s:%d\"\n", servicePort, serviceAddr, servicePort)
 		socatCmds += fmt.Sprintf("socat TCP-LISTEN:%d,bind=$WG_IP,fork,reuseaddr TCP:%s:%d &\n", servicePort, serviceAddr, servicePort)
 	}
 

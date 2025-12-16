@@ -45,6 +45,28 @@ spec:
     app: postgres
   type: ClusterIP
 ---
+# Example: Nginx ConfigMap to listen on all addresses (0.0.0.0)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: default
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+    http {
+        server {
+            listen 0.0.0.0:8080;  # Listen on all interfaces, not just localhost
+            server_name _;
+            location / {
+                root /usr/share/nginx/html;
+                index index.html;
+            }
+        }
+    }
+---
 # Example: Your application deployment (target of the ingress Service)
 apiVersion: apps/v1
 kind: Deployment
@@ -67,6 +89,15 @@ spec:
         ports:
         - containerPort: 8080
           name: http
+        # Mount custom nginx config to listen on all addresses
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+          readOnly: true
+        # Override default nginx command to use custom config
+        command: ["nginx"]
+        args: ["-g", "daemon off;"]
         resources:
           requests:
             memory: "64Mi"
@@ -74,4 +105,8 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "200m"
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config
 
