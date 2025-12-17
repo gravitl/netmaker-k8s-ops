@@ -30,6 +30,7 @@ spec:
         - |
           # Install PostgreSQL client and create a simple Node.js app
           apk add --no-cache postgresql-client nodejs npm
+          mkdir -p /app
           cat > /app/server.js << 'EOF'
           const http = require('http');
           const { exec } = require('child_process');
@@ -132,9 +133,9 @@ metadata:
     netmaker.io/egress: "enabled"
     # Option 1: Use Netmaker DNS name (recommended)
     # This should match the ingress-dns-name from Cluster A
-    netmaker.io/egress-target-dns: "postgres.cluster-a.netmaker.internal"
+    # netmaker.io/egress-target-dns: "postgres-db-ingress-ingress-proxy.netmaker.hosted.internal"
     # Option 2: Use Netmaker IP address (alternative)
-    # netmaker.io/egress-target-ip: "10.0.0.50"  # IP of ingress proxy in Cluster A
+    netmaker.io/egress-target-ip: "100.64.0.13"  # IP of ingress proxy in Cluster A
     # Optional: Custom secret configuration for netclient token
     # netmaker.io/secret-name: "custom-netclient-token"  # Default: netclient-token
     # netmaker.io/secret-key: "token"                     # Default: token

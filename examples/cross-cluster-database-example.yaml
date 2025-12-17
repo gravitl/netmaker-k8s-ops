@@ -35,6 +35,9 @@ spec:
             secretKeyRef:
               name: postgres-secret
               key: password
+        # Set PGDATA to a subdirectory to avoid mount point issues
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         ports:
         - containerPort: 5432
           name: postgres
@@ -106,7 +109,7 @@ metadata:
     netmaker.io/ingress: "enabled"
     # Optional: Specify DNS name for this database on Netmaker network
     # Other clusters can use this DNS name to connect
-    netmaker.io/ingress-dns-name: "postgres.cluster-a.netmaker.internal"
+    netmaker.io/ingress-dns-name: "postgres-db-ingress-ingress-proxy.netmaker.hosted.internal"
     # Optional: Specify Netmaker IP to bind to (defaults to WireGuard interface IP)
     # netmaker.io/ingress-bind-ip: "10.0.0.50"
     # Optional: Custom secret configuration for netclient token

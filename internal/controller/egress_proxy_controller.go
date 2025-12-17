@@ -423,26 +423,44 @@ func (r *EgressProxyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // getNetclientToken gets the netclient token from secret
-// Checks Service annotations first, then environment variables for secret name/key
+// First tries to get secret from service's namespace, then falls back to operator namespace
 func (r *EgressProxyReconciler) getNetclientToken(ctx context.Context, service *corev1.Service) string {
+	logger := log.FromContext(ctx)
 	// Get secret configuration from Service annotations or environment variables
 	secretName := r.getSecretNameFromService(service)
 	secretKey := r.getSecretKeyFromService(service)
-	secretNamespace := r.getSecretNamespaceFromService(service)
+	operatorNamespace := getEnvOrDefault("OPERATOR_NAMESPACE", "netmaker-k8s-ops-system")
 
 	secret := &corev1.Secret{}
+
+	// First, try to get secret from service's namespace
 	secretNamespacedName := types.NamespacedName{
 		Name:      secretName,
-		Namespace: secretNamespace,
+		Namespace: service.Namespace,
 	}
 
 	if err := r.Get(ctx, secretNamespacedName, secret); err == nil {
 		if tokenBytes, exists := secret.Data[secretKey]; exists {
+			logger.Info("Found netclient token in service namespace", "namespace", service.Namespace, "secret", secretName)
 			return string(tokenBytes)
 		}
 	}
 
-	// Secret not found or key doesn't exist - return empty (will fail at pod creation)
+	// Fallback: try operator namespace
+	secretNamespacedName = types.NamespacedName{
+		Name:      secretName,
+		Namespace: operatorNamespace,
+	}
+
+	if err := r.Get(ctx, secretNamespacedName, secret); err == nil {
+		if tokenBytes, exists := secret.Data[secretKey]; exists {
+			logger.Info("Found netclient token in operator namespace (fallback)", "namespace", operatorNamespace, "secret", secretName)
+			return string(tokenBytes)
+		}
+	}
+
+	// Secret not found in either namespace - return empty (will fail at pod creation)
+	logger.Info("Netclient token secret not found in service or operator namespace", "serviceNamespace", service.Namespace, "operatorNamespace", operatorNamespace, "secret", secretName)
 	return ""
 }
 
@@ -468,39 +486,41 @@ func (r *EgressProxyReconciler) getSecretKeyFromService(service *corev1.Service)
 	return getEnvOrDefault("NETCLIENT_SECRET_KEY", "token")
 }
 
-// getSecretNamespaceFromService gets the secret namespace - always uses operator namespace for security
-// Secrets can only be read from the operator namespace
+// getSecretNamespaceFromService gets the secret namespace - deprecated, kept for backward compatibility
+// The fallback logic is now handled in getNetclientToken and buildNetclientEnvVars
 func (r *EgressProxyReconciler) getSecretNamespaceFromService(service *corev1.Service) string {
-	// Always use operator namespace - ignore any namespace specified in annotations for security
+	// This method is kept for backward compatibility but is no longer used
+	// The actual secret lookup now tries service namespace first, then operator namespace
 	operatorNamespace := getEnvOrDefault("OPERATOR_NAMESPACE", "netmaker-k8s-ops-system")
 	return operatorNamespace
 }
 
 // buildNetclientEnvVars builds environment variables for netclient container
-// Uses secret if available, otherwise falls back to direct value
-// Checks Service annotations first for secret configuration
+// First tries to use secret from service's namespace, then falls back to operator namespace
 func (r *EgressProxyReconciler) buildNetclientEnvVars(ctx context.Context, service *corev1.Service, tokenValue string) []corev1.EnvVar {
+	logger := log.FromContext(ctx)
 	// Get secret configuration from Service annotations or environment variables
 	secretName := r.getSecretNameFromService(service)
 	secretKey := r.getSecretKeyFromService(service)
-	secretNamespace := r.getSecretNamespaceFromService(service)
-
-	// Check if secret exists
-	secret := &corev1.Secret{}
-	secretNamespacedName := types.NamespacedName{
-		Name:      secretName,
-		Namespace: secretNamespace,
-	}
+	operatorNamespace := getEnvOrDefault("OPERATOR_NAMESPACE", "netmaker-k8s-ops-system")
 
 	envVars := []corev1.EnvVar{
 		{Name: "DAEMON", Value: "on"},
 		{Name: "LOG_LEVEL", Value: "info"},
 	}
 
-	// Try to use secret if it exists
+	secret := &corev1.Secret{}
+
+	// First, try to use secret from service's namespace
+	secretNamespacedName := types.NamespacedName{
+		Name:      secretName,
+		Namespace: service.Namespace,
+	}
+
 	if err := r.Get(ctx, secretNamespacedName, secret); err == nil {
 		if _, exists := secret.Data[secretKey]; exists {
-			// Use secret reference
+			logger.Info("Using netclient token secret from service namespace", "namespace", service.Namespace, "secret", secretName)
+			// Use secret reference from service namespace
 			envVars = append(envVars, corev1.EnvVar{
 				Name: "TOKEN",
 				ValueFrom: &corev1.EnvVarSource{
@@ -516,7 +536,19 @@ func (r *EgressProxyReconciler) buildNetclientEnvVars(ctx context.Context, servi
 		}
 	}
 
-	// Secret not found - use empty value (will cause netclient to fail, which is expected)
+	// Fallback: if tokenValue was provided (from operator namespace), use it directly
+	// Note: We can't use SecretKeyRef for cross-namespace secrets, so we use the value directly
+	if tokenValue != "" {
+		logger.Info("Using netclient token from operator namespace (fallback, using direct value)", "namespace", operatorNamespace, "secret", secretName)
+		envVars = append(envVars, corev1.EnvVar{
+			Name:  "TOKEN",
+			Value: tokenValue,
+		})
+		return envVars
+	}
+
+	// Secret not found in either namespace - use empty value (will cause netclient to fail, which is expected)
+	logger.Info("Netclient token secret not found in service or operator namespace, using empty token", "serviceNamespace", service.Namespace, "operatorNamespace", operatorNamespace, "secret", secretName)
 	envVars = append(envVars, corev1.EnvVar{
 		Name:  "TOKEN",
 		Value: "",
