@@ -1,0 +1,144 @@
+# Cross-Cluster Database Example - Cluster A (Database Cluster)
+# This example shows how to deploy a PostgreSQL database and expose it to the Netmaker network
+# so it can be accessed from other clusters via the Netmaker VPN
+
+---
+# Step 1: Deploy PostgreSQL Database
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-db
+  namespace: default
+  labels:
+    app: postgres
+spec:
+  serviceName: postgres-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        env:
+        - name: POSTGRES_DB
+          value: "mydb"
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        ports:
+        - containerPort: 5432
+          name: postgres
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+---
+# Step 2: Create PersistentVolumeClaim for database
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# Step 3: Create Secret for database credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: default
+type: Opaque
+stringData:
+  password: "changeme123"  # Change this to a secure password
+---
+# Step 4: Create ClusterIP Service for PostgreSQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db
+  namespace: default
+  labels:
+    app: postgres
+spec:
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+    name: postgres
+  selector:
+    app: postgres
+  type: ClusterIP
+---
+# Step 5: Expose Database to Netmaker Network via Ingress Proxy
+# This allows other clusters/devices on the Netmaker network to access this database
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-db-ingress
+  namespace: default
+  annotations:
+    # Enable ingress proxy to expose this service to Netmaker network
+    netmaker.io/ingress: "enabled"
+    # Optional: Specify DNS name for this database on Netmaker network
+    # Other clusters can use this DNS name to connect
+    netmaker.io/ingress-dns-name: "postgres.cluster-a.netmaker.internal"
+    # Optional: Specify Netmaker IP to bind to (defaults to WireGuard interface IP)
+    # netmaker.io/ingress-bind-ip: "10.0.0.50"
+    # Optional: Custom secret configuration for netclient token
+    # netmaker.io/secret-name: "custom-netclient-token"  # Default: netclient-token
+    # netmaker.io/secret-key: "token"                     # Default: token
+spec:
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432  # Port your PostgreSQL database listens on
+    protocol: TCP
+  selector:
+    app: postgres  # This should match your database deployment
+  type: ClusterIP
+---
+# Example: Test connection from within Cluster A
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres-test-client
+  namespace: default
+spec:
+  containers:
+  - name: postgres-client
+    image: postgres:15-alpine
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "Testing database connection from Cluster A..."
+      # Test connection to the database via ClusterIP service
+      PGPASSWORD=changeme123 psql -h postgres-db.default.svc.cluster.local -U postgres -d mydb -c "SELECT version();"
+      sleep 3600
+  restartPolicy: Never
+

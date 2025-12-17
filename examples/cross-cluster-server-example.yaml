@@ -1,0 +1,196 @@
+# Cross-Cluster Server Example - Cluster B (Application Cluster)
+# This example shows how to deploy an application server that connects to a database
+# in another cluster via the Netmaker network using egress proxy
+
+---
+# Step 1: Deploy Application Server (e.g., Node.js API)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-server
+  namespace: default
+  labels:
+    app: app-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: app-server
+  template:
+    metadata:
+      labels:
+        app: app-server
+    spec:
+      containers:
+      - name: app
+        image: node:18-alpine
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Install PostgreSQL client and create a simple Node.js app
+          apk add --no-cache postgresql-client nodejs npm
+          cat > /app/server.js << 'EOF'
+          const http = require('http');
+          const { exec } = require('child_process');
+          
+          const server = http.createServer((req, res) => {
+            if (req.url === '/health') {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ status: 'healthy' }));
+            } else if (req.url === '/db-test') {
+              // Test database connection via egress proxy
+              const dbHost = process.env.DB_HOST || 'postgres-cluster-a.default.svc.cluster.local';
+              const dbPort = process.env.DB_PORT || '5432';
+              const dbUser = process.env.DB_USER || 'postgres';
+              const dbPassword = process.env.DB_PASSWORD || 'changeme123';
+              const dbName = process.env.DB_NAME || 'mydb';
+              
+              exec(`PGPASSWORD=${dbPassword} psql -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -c "SELECT version();"`, 
+                (error, stdout, stderr) => {
+                  if (error) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: error.message, stderr }));
+                  } else {
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true, output: stdout }));
+                  }
+                });
+            } else {
+              res.writeHead(404, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Not found' }));
+            }
+          });
+          
+          server.listen(8080, '0.0.0.0', () => {
+            console.log('Server running on port 8080');
+          });
+          EOF
+          node /app/server.js
+        env:
+        - name: DB_HOST
+          value: "postgres-cluster-a.default.svc.cluster.local"  # Egress proxy service name
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: password
+        - name: DB_NAME
+          value: "mydb"
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+# Step 2: Create Secret for database credentials (Cluster B)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-credentials
+  namespace: default
+type: Opaque
+stringData:
+  password: "changeme123"  # Should match the password in Cluster A
+---
+# Step 3: Create ClusterIP Service for Application Server
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-server
+  namespace: default
+  labels:
+    app: app-server
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: app-server
+  type: ClusterIP
+---
+# Step 4: Create Egress Proxy to Access Database in Cluster A
+# This allows pods in Cluster B to access the database in Cluster A via Netmaker network
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-cluster-a
+  namespace: default
+  annotations:
+    # Enable egress proxy functionality
+    netmaker.io/egress: "enabled"
+    # Option 1: Use Netmaker DNS name (recommended)
+    # This should match the ingress-dns-name from Cluster A
+    netmaker.io/egress-target-dns: "postgres.cluster-a.netmaker.internal"
+    # Option 2: Use Netmaker IP address (alternative)
+    # netmaker.io/egress-target-ip: "10.0.0.50"  # IP of ingress proxy in Cluster A
+    # Optional: Custom secret configuration for netclient token
+    # netmaker.io/secret-name: "custom-netclient-token"  # Default: netclient-token
+    # netmaker.io/secret-key: "token"                     # Default: token
+spec:
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432  # Port on the database in Cluster A (via Netmaker network)
+    protocol: TCP
+  selector:
+    app: netmaker-egress-proxy
+    service-name: postgres-cluster-a
+  type: ClusterIP
+---
+# Example: Test connection from Cluster B
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-test-client
+  namespace: default
+spec:
+  containers:
+  - name: postgres-client
+    image: postgres:15-alpine
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "Testing database connection from Cluster B to Cluster A..."
+      echo "Connecting via egress proxy: postgres-cluster-a.default.svc.cluster.local"
+      # Test connection to the database in Cluster A via egress proxy
+      PGPASSWORD=changeme123 psql -h postgres-cluster-a.default.svc.cluster.local -U postgres -d mydb -c "SELECT version();"
+      echo "Connection successful!"
+      sleep 3600
+  restartPolicy: Never
+---
+# Example: Test application server endpoints
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-test-client
+  namespace: default
+spec:
+  containers:
+  - name: curl
+    image: curlimages/curl:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "Testing application server..."
+      # Test health endpoint
+      curl http://app-server.default.svc.cluster.local/health
+      echo ""
+      # Test database connection through app server
+      curl http://app-server.default.svc.cluster.local/db-test
+      sleep 3600
+  restartPolicy: Never
+
