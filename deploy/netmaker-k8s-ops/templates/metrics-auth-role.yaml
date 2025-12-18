@@ -1,0 +1,22 @@
+{{- if and .Values.rbac.create .Values.service.metrics.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "netmaker-k8s-ops.fullname" . }}-metrics-auth-role
+  labels:
+    {{- include "netmaker-k8s-ops.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+{{- end }}
+

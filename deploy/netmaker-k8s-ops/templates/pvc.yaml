@@ -1,0 +1,31 @@
+{{- if and .Values.netclient.enabled .Values.volumes.netclientConfig.usePVC }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.volumes.netclientConfig.pvcName | default (include "netmaker-k8s-ops.fullname" . | printf "%s-netclient-pvc") }}
+  namespace: {{ include "netmaker-k8s-ops.namespace" . }}
+  labels:
+    {{- include "netmaker-k8s-ops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: netclient
+  {{- with .Values.volumes.netclientConfig.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- if .Values.volumes.netclientConfig.accessModes }}
+    {{- toYaml .Values.volumes.netclientConfig.accessModes | nindent 4 }}
+    {{- else }}
+    - ReadWriteOnce
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.volumes.netclientConfig.storageSize | default "1Gi" }}
+  {{- if .Values.volumes.netclientConfig.storageClassName }}
+  storageClassName: {{ .Values.volumes.netclientConfig.storageClassName }}
+  {{- end }}
+  {{- if .Values.volumes.netclientConfig.volumeName }}
+  volumeName: {{ .Values.volumes.netclientConfig.volumeName }}
+  {{- end }}
+{{- end }}
+

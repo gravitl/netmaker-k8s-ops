@@ -65,10 +65,10 @@ manager:
   resources:
     limits:
       cpu: 500m
-      memory: 256Mi
-    requests:
-      cpu: 100m
       memory: 128Mi
+    requests:
+      cpu: 10m
+      memory: 64Mi
 
 # Netclient sidecar configuration
 netclient:
@@ -92,8 +92,9 @@ netclient:
       memory: 64Mi
 
 # Webhook configuration
+# In config/, webhook is disabled by default (commented out in kustomization.yaml)
 webhook:
-  enabled: true
+  enabled: false
   # Certificate configuration
   cert:
     # If using cert-manager, set this to the certificate name
@@ -113,7 +114,7 @@ service:
     enabled: true
     type: ClusterIP
     port: 8085
-    targetPort: 8085
+    targetPort: proxy  # Port name (matches container port name)
   # Metrics service
   metrics:
     enabled: false
@@ -151,8 +152,24 @@ probes:
 
 # Volumes configuration
 volumes:
-  # Host path for netclient config
+  # Netclient config volume configuration
   netclientConfig:
+    # Use PVC instead of hostPath (recommended for production)
+    usePVC: true
+    # PVC name (defaults to {fullname}-netclient-pvc)
+    pvcName: ""
+    # Storage size for PVC
+    storageSize: 1Gi
+    # Access modes for PVC (ReadWriteOnce recommended for single replica)
+    accessModes: []
+      # - ReadWriteOnce
+    # Storage class name (leave empty to use default)
+    storageClassName: ""
+    # Volume name to reuse existing PV (optional)
+    volumeName: ""
+    # PVC annotations
+    annotations: {}
+    # Fallback to hostPath if usePVC is false
     hostPath: /etc/netclient
     type: DirectoryOrCreate
   # EmptyDir for netclient logs
@@ -165,6 +182,17 @@ autoscaling:
   maxReplicas: 100
   targetCPUUtilizationPercentage: 80
   # targetMemoryUtilizationPercentage: 80
+
+# Deployment strategy configuration
+deployment:
+  # Strategy type: Recreate (recommended when using PVC with ReadWriteOnce) or RollingUpdate
+  # If not specified, defaults to Recreate when using PVC
+  strategy: {}
+    # type: Recreate
+    # type: RollingUpdate
+    # rollingUpdate:
+    #   maxSurge: 1
+    #   maxUnavailable: 0
 
 nodeSelector: {}
 

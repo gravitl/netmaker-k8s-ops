@@ -10,6 +10,14 @@ spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
+  {{- if .Values.deployment.strategy }}
+  strategy:
+    {{- toYaml .Values.deployment.strategy | nindent 4 }}
+  {{- else if and .Values.netclient.enabled .Values.volumes.netclientConfig.usePVC }}
+  # Default to Recreate strategy when using PVC (ReadWriteOnce access mode)
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "netmaker-k8s-ops.selectorLabels" . | nindent 6 }}
@@ -120,7 +128,6 @@ spec:
               name: log-netclient
             {{- end }}
           securityContext:
-            privileged: true
             capabilities:
               add:
                 - NET_ADMIN
@@ -145,10 +152,16 @@ spec:
             secretName: webhook-server-cert
         {{- end }}
         {{- if .Values.netclient.enabled }}
+        {{- if .Values.volumes.netclientConfig.usePVC }}
+        - name: etc-netclient
+          persistentVolumeClaim:
+            claimName: {{ .Values.volumes.netclientConfig.pvcName | default (include "netmaker-k8s-ops.fullname" . | printf "%s-netclient-pvc") }}
+        {{- else }}
         - hostPath:
             path: {{ .Values.volumes.netclientConfig.hostPath }}
             type: {{ .Values.volumes.netclientConfig.type }}
           name: etc-netclient
+        {{- end }}
         {{- if .Values.volumes.netclientLogs.enabled }}
         - emptyDir:
             medium: Memory

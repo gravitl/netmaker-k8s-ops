@@ -1,0 +1,14 @@
+{{- if and .Values.rbac.create .Values.service.metrics.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "netmaker-k8s-ops.fullname" . }}-metrics-reader
+  labels:
+    {{- include "netmaker-k8s-ops.labels" . | nindent 4 }}
+rules:
+- nonResourceURLs:
+  - "/metrics"
+  verbs:
+  - get
+{{- end }}
+
