@@ -41,11 +41,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	// [WEBHOOK] Uncomment to enable webhook-based netclient sidecar injection
+	// "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	networkv1 "github.com/gravitl/netmaker-k8s-ops/api/v1"
 	"github.com/gravitl/netmaker-k8s-ops/internal/controller"
-	netmakerwebhook "github.com/gravitl/netmaker-k8s-ops/internal/webhook"
+	// [WEBHOOK] Uncomment to enable webhook-based netclient sidecar injection
+	// netmakerwebhook "github.com/gravitl/netmaker-k8s-ops/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -189,31 +192,34 @@ func main() {
 	}
 	setupLog.Info("registered ingress proxy controller for Services")
 
-	// Register the netclient sidecar webhook for all supported resource types
-	netclientWebhook := netmakerwebhook.NewNetclientSidecarWebhook()
+	// [WEBHOOK] Register the netclient sidecar webhook for all supported resource types
+	// Uncomment the following section to enable webhook-based netclient sidecar injection
+	/*
+		netclientWebhook := netmakerwebhook.NewNetclientSidecarWebhook()
 
-	// Inject dependencies
-	if err := netclientWebhook.InjectClient(mgr.GetClient()); err != nil {
-		setupLog.Error(err, "unable to inject client into webhook")
-		os.Exit(1)
-	}
+		// Inject dependencies
+		if err := netclientWebhook.InjectClient(mgr.GetClient()); err != nil {
+			setupLog.Error(err, "unable to inject client into webhook")
+			os.Exit(1)
+		}
 
-	// Create decoder
-	decoder := admission.NewDecoder(scheme)
+		// Create decoder
+		decoder := admission.NewDecoder(scheme)
 
-	if err := netclientWebhook.InjectDecoder(decoder); err != nil {
-		setupLog.Error(err, "unable to inject decoder into webhook")
-		os.Exit(1)
-	}
+		if err := netclientWebhook.InjectDecoder(decoder); err != nil {
+			setupLog.Error(err, "unable to inject decoder into webhook")
+			os.Exit(1)
+		}
 
-	// Register webhook handlers for all supported resource types
-	mgr.GetWebhookServer().Register("/mutate-pods", &admission.Webhook{Handler: netclientWebhook})
-	mgr.GetWebhookServer().Register("/mutate-deployments", &admission.Webhook{Handler: netclientWebhook})
-	mgr.GetWebhookServer().Register("/mutate-statefulsets", &admission.Webhook{Handler: netclientWebhook})
-	mgr.GetWebhookServer().Register("/mutate-daemonsets", &admission.Webhook{Handler: netclientWebhook})
-	mgr.GetWebhookServer().Register("/mutate-jobs", &admission.Webhook{Handler: netclientWebhook})
-	mgr.GetWebhookServer().Register("/mutate-replicasets", &admission.Webhook{Handler: netclientWebhook})
-	setupLog.Info("registered netclient sidecar webhook for all resource types")
+		// Register webhook handlers for all supported resource types
+		mgr.GetWebhookServer().Register("/mutate-pods", &admission.Webhook{Handler: netclientWebhook})
+		mgr.GetWebhookServer().Register("/mutate-deployments", &admission.Webhook{Handler: netclientWebhook})
+		mgr.GetWebhookServer().Register("/mutate-statefulsets", &admission.Webhook{Handler: netclientWebhook})
+		mgr.GetWebhookServer().Register("/mutate-daemonsets", &admission.Webhook{Handler: netclientWebhook})
+		mgr.GetWebhookServer().Register("/mutate-jobs", &admission.Webhook{Handler: netclientWebhook})
+		mgr.GetWebhookServer().Register("/mutate-replicasets", &admission.Webhook{Handler: netclientWebhook})
+		setupLog.Info("registered netclient sidecar webhook for all resource types")
+	*/
 
 	// +kubebuilder:scaffold:builder
 
