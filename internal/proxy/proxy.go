@@ -138,13 +138,13 @@ func GetAllUserIPMappings() map[string]models.UserMapping {
 // getNMAPIConfig reads external API configuration from environment variables
 func getNMAPIConfig() ExternalAPIConfig {
 	config := ExternalAPIConfig{
-		ServerDomain: os.Getenv("EXTERNAL_API_SERVER_DOMAIN"),
-		APIToken:     os.Getenv("EXTERNAL_API_TOKEN"),
+		ServerDomain: os.Getenv("API_SERVER_DOMAIN"),
+		APIToken:     os.Getenv("API_TOKEN"),
 		SyncInterval: 30 * time.Second, // Default sync interval (seconds)
 	}
 
 	// Override sync interval if set (expects integer seconds)
-	if syncIntervalStr := os.Getenv("EXTERNAL_API_SYNC_INTERVAL"); syncIntervalStr != "" {
+	if syncIntervalStr := os.Getenv("API_SYNC_INTERVAL"); syncIntervalStr != "" {
 		if secs, err := strconv.Atoi(syncIntervalStr); err == nil && secs > 0 {
 			config.SyncInterval = time.Duration(secs) * time.Second
 		}

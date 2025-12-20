@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   repository: netmaker-k8s-ops
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
 
@@ -16,7 +16,8 @@ fullnameOverride: ""
 
 # Namespace where the operator will be deployed
 namespace:
-  create: true
+  create: false  # Set to true if you want the chart template to create the namespace
+                 # Recommended: Use --create-namespace flag instead (Helm best practice)
   # If not set, will use release-name-system format
   name: ""
 
@@ -46,22 +47,23 @@ manager:
     - --leader-elect
     - --health-probe-bind-address=:8081
     - --metrics-bind-address=0
-  env:
-    - name: IN_CLUSTER
-      value: "true"
-    - name: ENABLE_LEADER_ELECTION
-      value: "true"
-    - name: PROXY_SKIP_TLS_VERIFY
-      value: "true"
-    - name: PROXY_MODE
-      value: "auth"
-    # External API configuration
-    - name: EXTERNAL_API_SERVER_DOMAIN
-      value: ""
-    - name: EXTERNAL_API_TOKEN
-      value: ""
-    - name: EXTERNAL_API_SYNC_INTERVAL
-      value: "30"
+    # Verbosity: Use --zap-log-level=debug for debug logs, or -v=<0-10> for numeric verbosity
+    # - --zap-log-level=info  # Options: debug, info, error (default: info)
+    # - -v=1  # Numeric verbosity (0-10, higher = more verbose)
+  # Configuration via ConfigMap
+  configMap:
+    inCluster: "true"
+    enableLeaderElection: "true"
+    proxySkipTLSVerify: "true"
+    proxyMode: "auth"
+    verbosity: "info"  # Set via: --set manager.configMap.verbosity="debug". Options: debug, info, error
+
+# API configuration for user IP mapping sync
+api:
+  enabled: true  # Enable API integration
+  serverDomain: ""  # Set via: --set api.serverDomain="api.example.com"
+  token: ""  # Set via: --set api.token="your-token"
+  syncInterval: "300"  # Set via: --set api.syncInterval="300"
   resources:
     limits:
       cpu: 500m
@@ -76,7 +78,7 @@ netclient:
   image:
     repository: gravitl/netclient
     tag: v1.2.0
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   token: ""  # Netmaker token - should be set via secret
   env:
     - name: DAEMON
@@ -201,7 +203,6 @@ tolerations: []
 affinity: {}
 
 # CRD installation
-# Note: CRDs should be installed separately before deploying the operator
-# or use helm install with --skip-crds flag and install CRDs manually
-crds:
-  install: false
+# CRDs are automatically installed from the crds/ directory when using Helm.
+# CRDs are NOT deleted when uninstalling the chart (this is Helm's default behavior).
+# To remove CRDs manually, use: kubectl delete crd netmakerops.network.netmaker.io

@@ -132,11 +132,11 @@ spec:
           value: "true"  # Skip TLS verification for proxy (set to "false" to enable verification)
         - name: PROXY_MODE
           value: "auth"  # Proxy mode: "auth" (impersonate WireGuard peers) or "noauth" (no authentication)
-        - name: EXTERNAL_API_SERVER_DOMAIN
-          value: "api.nm.188-166-181-205.nip.io"  # External API server domain (e.g., api.example.com)
-        - name: EXTERNAL_API_TOKEN
-          value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJSb2xlIjoiYWRtaW4iLCJVc2VyTmFtZSI6Ims4cy1vcHMtdXNlciIsIkFwaSI6ImFwaS5ubS4xODgtMTY2LTE4MS0yMDUubmlwLmlvIiwiVG9rZW5UeXBlIjoiYWNjZXNzX3Rva2VuIiwiUmFjQXV0b0Rpc2FibGUiOmZhbHNlLCJpc3MiOiJOZXRtYWtlciIsInN1YiI6InVzZXJ8azhzLW9wcy11c2VyIiwiZXhwIjoxODU5MjA5NzI4LCJpYXQiOjE3NjQ1MTUzNTQsImp0aSI6Ijc4NWM3ZWYxLTk3MGYtNDQ3NS05YTk5LTNhM2U3ZWM2Zjk2MiJ9.DHBUIwk-gyW8Osj8SVRkPrNMZpCYMK3H-vG0KaGHx1Y"  # API token for external API authentication
-        - name: EXTERNAL_API_SYNC_INTERVAL
+        - name: API_SERVER_DOMAIN
+          value: "api.nm.188-166-181-205.nip.io"  # API server domain (e.g., api.example.com)
+        - name: API_TOKEN
+          value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJSb2xlIjoiYWRtaW4iLCJVc2VyTmFtZSI6Ims4cy1vcHMtdXNlciIsIkFwaSI6ImFwaS5ubS4xODgtMTY2LTE4MS0yMDUubmlwLmlvIiwiVG9rZW5UeXBlIjoiYWNjZXNzX3Rva2VuIiwiUmFjQXV0b0Rpc2FibGUiOmZhbHNlLCJpc3MiOiJOZXRtYWtlciIsInN1YiI6InVzZXJ8azhzLW9wcy11c2VyIiwiZXhwIjoxODU5MjA5NzI4LCJpYXQiOjE3NjQ1MTUzNTQsImp0aSI6Ijc4NWM3ZWYxLTk3MGYtNDQ3NS05YTk5LTNhM2U3ZWM2Zjk2MiJ9.DHBUIwk-gyW8Osj8SVRkPrNMZpCYMK3H-vG0KaGHx1Y"  # API token for API authentication
+        - name: API_SYNC_INTERVAL
           value: "30"  # Sync interval in seconds
         securityContext:
           capabilities:

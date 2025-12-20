@@ -6,4 +6,8 @@ metadata:
   labels:
     {{- include "netmaker-k8s-ops.labels" . | nindent 4 }}
     control-plane: controller-manager
+  {{- if .Values.namespace.annotations }}
+  annotations:
+    {{- toYaml .Values.namespace.annotations | nindent 4 }}
+  {{- end }}
 {{- end }}
