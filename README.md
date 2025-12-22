@@ -146,18 +146,23 @@ Netmaker Device → WireGuard → Ingress Proxy Pod → K8s Service → K8s Pod
 
 #### Option 1: Helm Chart (Recommended)
 
-**Install from GHCR OCI registry (recommended):**
+**Install from Helm repository (recommended):**
 ```bash
-# Install the latest published chart from GitHub Container Registry
-helm install netmaker-k8s-ops \
-  oci://ghcr.io/gravitl/helm-charts/netmaker-k8s-ops \
+# Add the Helm repository (replace with your DigitalOcean Spaces endpoint)
+helm repo add netmaker-k8s-ops https://YOUR-SPACES-REGION.digitaloceanspaces.com/YOUR-BUCKET-NAME/
+helm repo update
+
+# Install the chart
+helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --create-namespace \
-  --version 0.1.0 \
+  --version 1.0.0 \
   --set image.repository=<your-registry>/netmaker-k8s-ops \
   --set image.tag=<tag> \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
 ```
+
+**Note**: Replace `YOUR-SPACES-REGION` and `YOUR-BUCKET-NAME` with your actual DigitalOcean Spaces configuration.
 
 **Or install from local chart:**
 ```bash
