@@ -14,7 +14,6 @@ on:
         type: string
 
 env:
-  REGISTRY: ghcr.io
   CHART_NAME: netmaker-k8s-ops
   HELM_CHART_DIR: deploy/netmaker-k8s-ops
 
@@ -23,7 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
 
     steps:
       - name: Checkout code
@@ -33,6 +31,22 @@ jobs:
         uses: azure/setup-helm@v4
         with:
           version: 'latest'
+
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install
+
+      - name: Configure AWS CLI for DigitalOcean Spaces
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET }}
+          AWS_DEFAULT_REGION: ${{ secrets.DO_SPACES_REGION }}
+          SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
+          SPACES_ENDPOINT: ${{ secrets.DO_SPACES_ENDPOINT }}
+        run: |
+          echo "AWS CLI configured for DigitalOcean Spaces"
 
       - name: Determine chart version
         id: chart_version
@@ -62,41 +76,73 @@ jobs:
           sed -i "s/^version:.*/version: ${{ steps.chart_version.outputs.version }}/" ${{ env.HELM_CHART_DIR }}/Chart.yaml
           cat ${{ env.HELM_CHART_DIR }}/Chart.yaml
 
-      - name: Configure Helm OCI registry
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} \
-            -u ${{ github.actor }} \
-            --password-stdin
-
       - name: Package Helm chart
         run: |
           mkdir -p ./dist
           helm package ${{ env.HELM_CHART_DIR }} --destination ./dist
           ls -lah ./dist/
 
-      - name: Publish Helm chart to GHCR
+      - name: Set repository URL
+        id: repo_url
+        env:
+          SPACES_ENDPOINT: ${{ secrets.DO_SPACES_ENDPOINT }}
+          SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
         run: |
-          CHART_FILE=$(ls ./dist/${CHART_NAME}-*.tgz)
-          echo "Publishing chart: $CHART_FILE to oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/helm-charts"
+          REPO_URL="${SPACES_ENDPOINT}/${SPACES_BUCKET}/"
+          echo "url=${REPO_URL}" >> $GITHUB_OUTPUT
+          echo "Repository URL: ${REPO_URL}"
+
+      - name: Download existing index.yaml from Spaces
+        continue-on-error: true
+        env:
+          SPACES_ENDPOINT: ${{ secrets.DO_SPACES_ENDPOINT }}
+          SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
+        run: |
+          aws s3 cp s3://${SPACES_BUCKET}/index.yaml ./index.yaml --endpoint-url=${SPACES_ENDPOINT} || echo "No existing index.yaml found"
+
+      - name: Update Helm repository index
+        run: |
+          REPO_URL="${{ steps.repo_url.outputs.url }}"
+          if [ -f index.yaml ]; then
+            helm repo index ./dist --url "${REPO_URL}" --merge index.yaml
+          else
+            helm repo index ./dist --url "${REPO_URL}"
+          fi
+          mv index.yaml ./dist/
+          cat ./dist/index.yaml
+
+      - name: Upload chart and index to DigitalOcean Spaces
+        env:
+          SPACES_ENDPOINT: ${{ secrets.DO_SPACES_ENDPOINT }}
+          SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
+        run: |
+          # Upload chart package
+          aws s3 cp ./dist/*.tgz s3://${SPACES_BUCKET}/ --acl public-read --endpoint-url=${SPACES_ENDPOINT}
           
-          helm push $CHART_FILE \
-            oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/helm-charts
+          # Upload index.yaml
+          aws s3 cp ./dist/index.yaml s3://${SPACES_BUCKET}/index.yaml --acl public-read --content-type "text/yaml" --endpoint-url=${SPACES_ENDPOINT}
           
-          echo "✅ Chart published successfully!"
-          echo "Install with: helm install netmaker-k8s-ops oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/helm-charts/${{ env.CHART_NAME }} --version ${{ steps.chart_version.outputs.version }}"
+          echo "✅ Chart uploaded successfully!"
 
       - name: Generate artifact summary
         run: |
+          REPO_URL="${{ steps.repo_url.outputs.url }}"
           echo "## Helm Chart Published 🎉" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Chart:** \`${{ env.CHART_NAME }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** \`${{ steps.chart_version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Registry:** \`oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/helm-charts/${{ env.CHART_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** \`${REPO_URL}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Installation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Add the Helm repository:" >> $GITHUB_STEP_SUMMARY
           echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "helm install netmaker-k8s-ops \\" >> $GITHUB_STEP_SUMMARY
-          echo "  oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/helm-charts/${{ env.CHART_NAME }} \\" >> $GITHUB_STEP_SUMMARY
+          echo "helm repo add netmaker-k8s-ops ${REPO_URL}" >> $GITHUB_STEP_SUMMARY
+          echo "helm repo update" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Install the chart:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \\" >> $GITHUB_STEP_SUMMARY
           echo "  --version ${{ steps.chart_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-
