@@ -107,15 +107,11 @@ jobs:
           SPACES_ENDPOINT: ${{ secrets.DO_SPACES_ENDPOINT }}
           SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
         run: |
-          aws s3 cp s3://${SPACES_BUCKET}/index.yaml ./index.yaml --endpoint-url=${SPACES_ENDPOINT} || echo "No existing index.yaml found"
+          aws s3 cp s3://${SPACES_BUCKET}/index.yaml ./dist/index.yaml --endpoint-url=${SPACES_ENDPOINT} || echo "No existing index.yaml found"
 
       - name: Update Helm repository index
         run: |
           REPO_URL="${{ steps.repo_url.outputs.url }}"
-          
-          # Debug: List files in dist directory
-          echo "Files in ./dist/:"
-          ls -lah ./dist/
           
           # Verify chart files exist
           CHART_COUNT=$(ls -1 ./dist/*.tgz 2>/dev/null | wc -l)
@@ -126,37 +122,24 @@ jobs:
           echo "Found $CHART_COUNT chart file(s)"
           
           # Create or update index.yaml
-          if [ -f index.yaml ]; then
+          # Note: helm repo index creates index.yaml inside the specified directory
+          if [ -f ./dist/index.yaml ]; then
             echo "Merging with existing index.yaml"
-            helm repo index ./dist --url "${REPO_URL}" --merge index.yaml
-            HELM_EXIT_CODE=$?
+            # Move existing index.yaml to current directory for merge
+            cp ./dist/index.yaml ./index.yaml
+            helm repo index ./dist --url "${REPO_URL}" --merge ./index.yaml
+            rm -f ./index.yaml
           else
             echo "Creating new index.yaml"
-            echo "Running: helm repo index ./dist --url '${REPO_URL}'"
             helm repo index ./dist --url "${REPO_URL}"
-            HELM_EXIT_CODE=$?
-            echo "Helm exit code: $HELM_EXIT_CODE"
           fi
           
-          # Check if helm command succeeded
-          if [ $HELM_EXIT_CODE -ne 0 ]; then
-            echo "Error: helm repo index failed with exit code $HELM_EXIT_CODE"
-            exit 1
-          fi
-          
-          # Verify index.yaml was created and move it
-          if [ -f index.yaml ]; then
-            echo "index.yaml created successfully, moving to ./dist/"
-            mv index.yaml ./dist/
-            echo "index.yaml contents:"
+          # Verify index.yaml was created (it should be in ./dist/)
+          if [ -f ./dist/index.yaml ]; then
+            echo "index.yaml created successfully in ./dist/"
             cat ./dist/index.yaml
           else
-            echo "Error: index.yaml was not created!"
-            echo "Current directory: $(pwd)"
-            echo "Files in current directory:"
-            ls -lah
-            echo "Files in ./dist/:"
-            ls -lah ./dist/
+            echo "Error: index.yaml was not created in ./dist/"
             exit 1
           fi
 
