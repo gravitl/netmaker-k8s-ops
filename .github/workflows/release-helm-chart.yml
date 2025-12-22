@@ -1,0 +1,102 @@
+name: Release Helm Chart
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (e.g., v1.0.0)
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Chart version (e.g., 0.1.0)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  CHART_NAME: netmaker-k8s-ops
+  HELM_CHART_DIR: deploy/netmaker-k8s-ops
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Determine chart version
+        id: chart_version
+        run: |
+          if [ "${{ github.event_name }}" == "push" ] && [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            # Extract version from tag (e.g., v1.2.3 -> 1.2.3)
+            VERSION=${GITHUB_REF#refs/tags/v}
+          elif [ "${{ github.event_name }}" == "release" ]; then
+            # Use release tag name (remove 'v' prefix if present)
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION=${VERSION#v}
+          else
+            # Use manual input version
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          
+          # If no version extracted, use chart version from Chart.yaml
+          if [ -z "$VERSION" ] || [ "$VERSION" == "null" ]; then
+            VERSION=$(grep '^version:' ${{ env.HELM_CHART_DIR }}/Chart.yaml | cut -d' ' -f2 | tr -d '"')
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Chart version: $VERSION"
+
+      - name: Update Chart.yaml version
+        run: |
+          sed -i "s/^version:.*/version: ${{ steps.chart_version.outputs.version }}/" ${{ env.HELM_CHART_DIR }}/Chart.yaml
+          cat ${{ env.HELM_CHART_DIR }}/Chart.yaml
+
+      - name: Configure Helm OCI registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} \
+            -u ${{ github.actor }} \
+            --password-stdin
+
+      - name: Package Helm chart
+        run: |
+          mkdir -p ./dist
+          helm package ${{ env.HELM_CHART_DIR }} --destination ./dist
+          ls -lah ./dist/
+
+      - name: Publish Helm chart to GHCR
+        run: |
+          CHART_FILE=$(ls ./dist/${CHART_NAME}-*.tgz)
+          echo "Publishing chart: $CHART_FILE to oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/helm-charts"
+          
+          helm push $CHART_FILE \
+            oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/helm-charts
+          
+          echo "✅ Chart published successfully!"
+          echo "Install with: helm install netmaker-k8s-ops oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/helm-charts/${{ env.CHART_NAME }} --version ${{ steps.chart_version.outputs.version }}"
+
+      - name: Generate artifact summary
+        run: |
+          echo "## Helm Chart Published 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Chart:** \`${{ env.CHART_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ steps.chart_version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/helm-charts/${{ env.CHART_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Installation" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "helm install netmaker-k8s-ops \\" >> $GITHUB_STEP_SUMMARY
+          echo "  oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/helm-charts/${{ env.CHART_NAME }} \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --version ${{ steps.chart_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
