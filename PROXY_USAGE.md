@@ -184,9 +184,9 @@ The proxy can automatically fetch user mappings from an external API, enabling c
 Set the following environment variables:
 
 ```bash
-export EXTERNAL_API_SERVER_DOMAIN="api.example.com"
-export EXTERNAL_API_TOKEN="your-api-token"
-export EXTERNAL_API_SYNC_INTERVAL="300"  # seconds
+export API_SERVER_DOMAIN="api.example.com"
+export API_TOKEN="your-api-token"
+export API_SYNC_INTERVAL="300"  # seconds
 ```
 
 ### How It Works
@@ -330,9 +330,9 @@ curl http://localhost:8085/metrics
 | `PROXY_IMPERSONATE_USER` | `wireguard-peer` | Username to impersonate for WireGuard peers (auth mode only) |
 | `PROXY_IMPERSONATE_GROUPS` | `system:authenticated,wireguard-peers` | Groups to impersonate for WireGuard peers (auth mode only) |
 | `PROXY_SKIP_TLS_VERIFY` | `true` | Skip TLS verification for proxy connections |
-| `EXTERNAL_API_SERVER_DOMAIN` | - | External API server domain for user mapping sync |
-| `EXTERNAL_API_TOKEN` | - | Bearer token for external API authentication |
-| `EXTERNAL_API_SYNC_INTERVAL` | `300` | How often to sync with external API (seconds) |
+| `API_SERVER_DOMAIN` | - | External API server domain for user mapping sync |
+| `API_TOKEN` | - | Bearer token for external API authentication |
+| `API_SYNC_INTERVAL` | `300` | How often to sync with external API (seconds) |
 | `GIN_MODE` | `debug` | Gin framework mode (debug/release) |
 | `IN_CLUSTER` | `false` | Use in-cluster configuration |
 

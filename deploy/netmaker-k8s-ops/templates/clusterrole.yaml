@@ -12,6 +12,48 @@ rules:
     verbs: ["*"]
   {{- else }}
   - apiGroups:
+    - ""
+    resources:
+    - endpoints
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - ""
+    resources:
+    - pods
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - ""
+    resources:
+    - services
+    verbs:
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - ""
+    resources:
+    - services/status
+    verbs:
+    - get
+    - patch
+    - update
+  - apiGroups:
     - network.netmaker.io
     resources:
     - netmakerops
@@ -37,51 +79,5 @@ rules:
     - get
     - patch
     - update
-  - apiGroups:
-    - ""
-    resources:
-    - pods
-    - services
-    - endpoints
-    - persistentvolumeclaims
-    - events
-    - configmaps
-    - secrets
-    verbs:
-    - get
-    - list
-    - watch
-    - create
-    - update
-    - patch
-    - delete
-  - apiGroups:
-    - apps
-    resources:
-    - deployments
-    - daemonsets
-    - replicasets
-    - statefulsets
-    verbs:
-    - get
-    - list
-    - watch
-    - create
-    - update
-    - patch
-    - delete
-  - apiGroups:
-    - batch
-    resources:
-    - jobs
-    - cronjobs
-    verbs:
-    - get
-    - list
-    - watch
-    - create
-    - update
-    - patch
-    - delete
   {{- end }}
 {{- end }}

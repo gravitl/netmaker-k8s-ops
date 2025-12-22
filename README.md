@@ -144,6 +144,142 @@ Netmaker Device → WireGuard → Ingress Proxy Pod → K8s Service → K8s Pod
 
 ### Installation
 
+#### Option 1: Helm Chart (Recommended)
+
+**Install from GHCR OCI registry (recommended):**
+```bash
+# Install the latest published chart from GitHub Container Registry
+helm install netmaker-k8s-ops \
+  oci://ghcr.io/gravitl/helm-charts/netmaker-k8s-ops \
+  --namespace netmaker-k8s-ops-system \
+  --create-namespace \
+  --version 0.1.0 \
+  --set image.repository=<your-registry>/netmaker-k8s-ops \
+  --set image.tag=<tag> \
+  --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
+```
+
+**Or install from local chart:**
+```bash
+# Basic installation with default values
+# Note: If namespace already exists, either omit --create-namespace or set namespace.create=false
+helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+  --namespace netmaker-k8s-ops-system \
+  --create-namespace \
+  --set image.repository=<your-registry>/netmaker-k8s-ops \
+  --set image.tag=<tag> \
+  --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
+```
+
+   **If namespace already exists**, use:
+```bash
+helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+  --namespace netmaker-k8s-ops-system \
+  --set namespace.create=false \
+  --set image.repository=<your-registry>/netmaker-k8s-ops \
+  --set image.tag=<tag> \
+  --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
+```
+
+   **With API configuration** (set API values via --set, creates ConfigMap):
+```bash
+helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+  --namespace netmaker-k8s-ops-system \
+  --create-namespace \
+  --set image.repository=<your-registry>/netmaker-k8s-ops \
+  --set image.tag=<tag> \
+  --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
+  --set api.enabled=true \
+  --set api.serverDomain="api.example.com" \
+  --set api.token="your-api-token-here" \
+  --set api.syncInterval="300"
+```
+
+   **Or using a values file** (for better organization):
+```bash
+# Create a values file (values-custom.yaml)
+cat > values-custom.yaml <<EOF
+image:
+  repository: <your-registry>/netmaker-k8s-ops
+  tag: <tag>
+netclient:
+  token: "YOUR_NETMAKER_TOKEN_HERE"
+manager:
+  env:
+    - name: IN_CLUSTER
+      value: "true"
+    - name: ENABLE_LEADER_ELECTION
+      value: "true"
+    - name: PROXY_SKIP_TLS_VERIFY
+      value: "true"
+    - name: PROXY_MODE
+      value: "auth"
+    - name: API_SERVER_DOMAIN
+      value: "api.example.com"
+    - name: API_TOKEN
+      value: "your-api-token-here"
+    - name: API_SYNC_INTERVAL
+      value: "300"
+EOF
+
+helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+  --namespace netmaker-k8s-ops-system \
+  --create-namespace \
+  --values values-custom.yaml
+```
+
+2. **Install with custom values**:
+```bash
+# Install with webhook, proxy, and API configuration enabled
+helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+  --namespace netmaker-k8s-ops-system \
+  --create-namespace \
+  --set image.repository=<your-registry>/netmaker-k8s-ops \
+  --set image.tag=<tag> \
+  --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
+  --set webhook.enabled=true \
+  --set service.proxy.enabled=true \
+  --set api.enabled=true \
+  --set api.serverDomain="api.example.com" \
+  --set api.token="your-api-token-here" \
+  --set api.syncInterval="300"
+```
+
+3. **Using Kubernetes Secret for token** (recommended for production):
+```bash
+# Create secret
+kubectl create secret generic netclient-token \
+  --from-literal=token="YOUR_NETMAKER_TOKEN_HERE" \
+  --namespace netmaker-k8s-ops-system
+
+# Install with secret reference (requires modifying values.yaml or using --set-file)
+helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+  --namespace netmaker-k8s-ops-system \
+  --create-namespace \
+  --set image.repository=<your-registry>/netmaker-k8s-ops \
+  --set image.tag=<tag>
+```
+
+   Then update the deployment to use the secret (see [Token Configuration Guide](TOKEN_CONFIGURATION.md)).
+
+4. **Verify deployment**:
+```bash
+kubectl get pods -n netmaker-k8s-ops-system
+helm status netmaker-k8s-ops -n netmaker-k8s-ops-system
+```
+
+**Uninstall with Helm**:
+```bash
+helm uninstall netmaker-k8s-ops -n netmaker-k8s-ops-system
+```
+
+**Note**: CRDs are NOT automatically removed by Helm uninstall (this is Helm's default behavior to prevent data loss). To remove CRDs manually:
+```bash
+kubectl delete crd netmakerops.network.netmaker.io
+```
+
+#### Option 2: Make/Kustomize
+
 1. **Build and push the operator image**:
 ```bash
 make docker-build docker-push IMG=<your-registry>/netmaker-k8s-ops:tag
@@ -333,6 +469,20 @@ curl http://api.k8s.netmaker.internal:80
 - ✅ **Dynamic Configuration**: Annotation-based configuration
 
 ## Uninstallation
+
+### Helm Installation
+
+**Uninstall using Helm**:
+```bash
+helm uninstall netmaker-k8s-ops -n netmaker-k8s-ops-system
+```
+
+**Delete CRDs** (optional, CRDs are NOT automatically removed by Helm uninstall to prevent data loss):
+```bash
+kubectl delete crd netmakerops.network.netmaker.io
+```
+
+### Make/Kustomize Installation
 
 **Delete CR instances**:
 ```bash

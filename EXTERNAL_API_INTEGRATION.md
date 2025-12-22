@@ -12,9 +12,9 @@ The proxy can automatically fetch user IP mappings from an external API endpoint
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `EXTERNAL_API_SERVER_DOMAIN` | Domain of the external API server | - | Yes |
-| `EXTERNAL_API_TOKEN` | Bearer token for API authentication | - | Yes |
-| `EXTERNAL_API_SYNC_INTERVAL` | How often to sync with external API (seconds) | `300` | No |
+| `API_SERVER_DOMAIN` | Domain of the external API server | - | Yes |
+| `API_TOKEN` | Bearer token for API authentication | - | Yes |
+| `API_SYNC_INTERVAL` | How often to sync with external API (seconds) | `300` | No |
 
 ### Example Configuration
 
@@ -29,11 +29,11 @@ spec:
       containers:
       - name: manager
         env:
-        - name: EXTERNAL_API_SERVER_DOMAIN
+        - name: API_SERVER_DOMAIN
           value: "api.example.com"
-        - name: EXTERNAL_API_TOKEN
+        - name: API_TOKEN
           value: "your-api-token-here"
-        - name: EXTERNAL_API_SYNC_INTERVAL
+        - name: API_SYNC_INTERVAL
           value: "300"  # seconds
 ```
 
@@ -41,20 +41,20 @@ spec:
 
 ### Endpoint
 
-**GET** `https://{EXTERNAL_API_SERVER_DOMAIN}/api/users/network_ip`
+**GET** `https://{API_SERVER_DOMAIN}/api/users/network_ip`
 
 ### Authentication
 
 The proxy sends a Bearer token in the Authorization header:
 
 ```
-Authorization: Bearer {EXTERNAL_API_TOKEN}
+Authorization: Bearer {API_TOKEN}
 ```
 
 ### Request Headers
 
 ```
-Authorization: Bearer {EXTERNAL_API_TOKEN}
+Authorization: Bearer {API_TOKEN}
 Content-Type: application/json
 ```
 
@@ -90,7 +90,7 @@ The API should return a JSON response with the following structure:
 ### Automatic Sync
 
 1. **Startup**: On proxy startup, fetches initial user mappings from external API
-2. **Periodic Sync**: Every `EXTERNAL_API_SYNC_INTERVAL`, fetches updated mappings
+2. **Periodic Sync**: Every `API_SYNC_INTERVAL`, fetches updated mappings
 3. **Update Mappings**: Replaces all existing mappings with the new ones from API
 4. **Impersonation**: Incoming requests use the latest mappings for user impersonation
 
@@ -293,7 +293,7 @@ if __name__ == '__main__':
 
 ```bash
 # Check if external API is configured
-kubectl exec deployment/netmaker-k8s-ops -- env | grep EXTERNAL_API
+kubectl exec deployment/netmaker-k8s-ops -- env | grep API_
 
 # View proxy logs for sync activity
 kubectl logs -f deployment/netmaker-k8s-ops | grep "external API"
@@ -324,7 +324,7 @@ curl -H "Authorization: Bearer your-token" \
 
 ### Common Issues
 
-1. **API Not Configured**: Check `EXTERNAL_API_SERVER_DOMAIN` and `EXTERNAL_API_TOKEN`
+1. **API Not Configured**: Check `API_SERVER_DOMAIN` and `API_TOKEN`
 2. **Authentication Failed**: Verify API token is correct
 3. **Network Issues**: Check connectivity to external API server
 4. **Invalid Response**: Ensure API returns correct JSON format
@@ -333,14 +333,14 @@ curl -H "Authorization: Bearer your-token" \
 
 ```bash
 # Check proxy configuration
-kubectl exec deployment/netmaker-k8s-ops -- env | grep EXTERNAL_API
+kubectl exec deployment/netmaker-k8s-ops -- env | grep API_
 
 # View sync logs
 kubectl logs deployment/netmaker-k8s-ops | grep "external API"
 
 # Test API connectivity from proxy pod
-kubectl exec deployment/netmaker-k8s-ops -- curl -H "Authorization: Bearer $EXTERNAL_API_TOKEN" \
-  https://$EXTERNAL_API_SERVER_DOMAIN/api/users/network_ip
+kubectl exec deployment/netmaker-k8s-ops -- curl -H "Authorization: Bearer $API_TOKEN" \
+  https://$API_SERVER_DOMAIN/api/users/network_ip
 ```
 
 ## Security Considerations
@@ -372,7 +372,7 @@ spec:
       containers:
       - name: manager
         env:
-        - name: EXTERNAL_API_TOKEN
+        - name: API_TOKEN
           valueFrom:
             secretKeyRef:
               name: external-api-secret

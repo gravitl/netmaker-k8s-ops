@@ -65,9 +65,11 @@ Create the name of the service account to use
 Create the namespace name
 */}}
 {{- define "netmaker-k8s-ops.namespace" -}}
-{{- if .Values.namespace.create }}
-{{- default (include "netmaker-k8s-ops.fullname" . | printf "%s-system") .Values.namespace.name }}
+{{- if .Values.namespace.name }}
+{{- .Values.namespace.name }}
+{{- else if .Values.namespace.create }}
+{{- include "netmaker-k8s-ops.fullname" . | printf "%s-system" }}
 {{- else }}
-{{- default "default" .Values.namespace.name }}
+{{- .Release.Namespace }}
 {{- end }}
 {{- end }}
