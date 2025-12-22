@@ -112,13 +112,37 @@ jobs:
       - name: Update Helm repository index
         run: |
           REPO_URL="${{ steps.repo_url.outputs.url }}"
-          if [ -f index.yaml ]; then
-            helm repo index ./dist --url "${REPO_URL}" --merge index.yaml
-          else
-            helm repo index ./dist --url "${REPO_URL}"
+          
+          # Verify chart files exist
+          if ! ls ./dist/*.tgz 1> /dev/null 2>&1; then
+            echo "Error: No chart files found in ./dist/"
+            exit 1
           fi
-          mv index.yaml ./dist/
-          cat ./dist/index.yaml
+          
+          # Create or update index.yaml
+          if [ -f index.yaml ]; then
+            echo "Merging with existing index.yaml"
+            helm repo index ./dist --url "${REPO_URL}" --merge index.yaml || {
+              echo "Error: Failed to merge index.yaml"
+              exit 1
+            }
+          else
+            echo "Creating new index.yaml"
+            helm repo index ./dist --url "${REPO_URL}" || {
+              echo "Error: Failed to create index.yaml"
+              exit 1
+            }
+          fi
+          
+          # Verify index.yaml was created and move it
+          if [ -f index.yaml ]; then
+            mv index.yaml ./dist/
+            echo "index.yaml created successfully:"
+            cat ./dist/index.yaml
+          else
+            echo "Error: index.yaml was not created!"
+            exit 1
+          fi
 
       - name: Upload chart and index to DigitalOcean Spaces
         env:
