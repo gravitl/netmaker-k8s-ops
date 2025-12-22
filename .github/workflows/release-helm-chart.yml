@@ -104,6 +104,9 @@ jobs:
       - name: Download existing index.yaml from Spaces
         continue-on-error: true
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET }}
+          AWS_DEFAULT_REGION: ${{ secrets.DO_SPACES_REGION }}
           SPACES_ENDPOINT: ${{ secrets.DO_SPACES_ENDPOINT }}
           SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
         run: |
@@ -145,6 +148,9 @@ jobs:
 
       - name: Upload chart and index to DigitalOcean Spaces
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET }}
+          AWS_DEFAULT_REGION: ${{ secrets.DO_SPACES_REGION }}
           SPACES_ENDPOINT: ${{ secrets.DO_SPACES_ENDPOINT }}
           SPACES_BUCKET: ${{ secrets.DO_SPACES_BUCKET }}
         run: |
