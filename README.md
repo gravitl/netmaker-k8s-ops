@@ -149,7 +149,7 @@ Netmaker Device → WireGuard → Ingress Proxy Pod → K8s Service → K8s Pod
 **Install from Helm repository (recommended):**
 ```bash
 # Add the Helm repository (replace with your DigitalOcean Spaces endpoint)
-helm repo add netmaker-k8s-ops https://YOUR-SPACES-REGION.digitaloceanspaces.com/YOUR-BUCKET-NAME/
+helm repo add netmaker-k8s-ops https://downloads.netmaker.io/charts/
 helm repo update
 
 # Install the chart
