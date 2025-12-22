@@ -6,6 +6,10 @@ on:
       tag:
         description: 'docker tag'
         required: true
+      update_latest:
+        description: 'Also tag as latest'
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       tag:
@@ -43,10 +47,20 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       -
+        name: Build tags list
+        id: tags
+        run: |
+          echo "tag1=${{ github.repository }}:${{ env.TAG }}" >> $GITHUB_OUTPUT
+          if [ "${{ inputs.update_latest }}" == "true" ]; then
+            echo "tag2=${{ github.repository }}:latest" >> $GITHUB_OUTPUT
+          fi
+      -
         name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ${{ github.repository }}:${{ env.TAG }}
+          tags: |
+            ${{ steps.tags.outputs.tag1 }}
+            ${{ steps.tags.outputs.tag2 }}
