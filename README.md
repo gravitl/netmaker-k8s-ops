@@ -146,7 +146,20 @@ Netmaker Device → WireGuard → Ingress Proxy Pod → K8s Service → K8s Pod
 
 #### Option 1: Helm Chart (Recommended)
 
-1. **Install using Helm** (CRDs are automatically installed):
+**Install from GHCR OCI registry (recommended):**
+```bash
+# Install the latest published chart from GitHub Container Registry
+helm install netmaker-k8s-ops \
+  oci://ghcr.io/gravitl/helm-charts/netmaker-k8s-ops \
+  --namespace netmaker-k8s-ops-system \
+  --create-namespace \
+  --version 0.1.0 \
+  --set image.repository=<your-registry>/netmaker-k8s-ops \
+  --set image.tag=<tag> \
+  --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
+```
+
+**Or install from local chart:**
 ```bash
 # Basic installation with default values
 # Note: If namespace already exists, either omit --create-namespace or set namespace.create=false
