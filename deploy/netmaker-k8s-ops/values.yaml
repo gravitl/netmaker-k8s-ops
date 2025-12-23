@@ -79,7 +79,7 @@ netclient:
     repository: gravitl/netclient
     tag: v1.4.0
     pullPolicy: Always
-  token: ""  # Netmaker token - should be set via secret
+  token: ""  # Netmaker token - will be stored in a Kubernetes Secret. Set via: --set netclient.token="your-token"
   env:
     - name: DAEMON
       value: "on"
