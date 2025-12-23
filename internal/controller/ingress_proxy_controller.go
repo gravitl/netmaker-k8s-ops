@@ -138,7 +138,7 @@ func (r *IngressProxyReconciler) ensureProxyPod(ctx context.Context, service *co
 // buildProxyPod builds the ingress proxy pod specification
 func (r *IngressProxyReconciler) buildProxyPod(ctx context.Context, service *corev1.Service, podName string) *corev1.Pod {
 	// Get configuration from environment or use defaults
-	netclientImage := getEnvOrDefaultIngress("NETCLIENT_IMAGE", "gravitl/netclient:v1.2.0")
+	netclientImage := getEnvOrDefaultIngress("NETCLIENT_IMAGE", "gravitl/netclient:v1.4.0")
 	// Try to get token from secret first (checks Service annotations), fallback to environment variable
 	netclientToken := r.getNetclientToken(ctx, service)
 	// Use socat for simple TCP forwarding
