@@ -17,10 +17,5 @@
   kubectl logs --namespace {{ include "netmaker-k8s-ops.namespace" . }} -l "app.kubernetes.io/name={{ include "netmaker-k8s-ops.name" . }}" -c netclient
 {{- end }}
 
-5. Check webhook configuration:
-  kubectl get mutatingwebhookconfiguration {{ include "netmaker-k8s-ops.fullname" . }}-webhook
-
-6. Verify CRDs are installed:
-  kubectl get crd netmakerops.network.netmaker.io
 
 For more information, visit: https://github.com/gravitl/netmaker-k8s-ops
