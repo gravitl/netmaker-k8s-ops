@@ -162,7 +162,6 @@ helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
 ```
 
-**Note**: Replace `YOUR-SPACES-REGION` and `YOUR-BUCKET-NAME` with your actual DigitalOcean Spaces configuration.
 
 **Or install from local chart:**
 ```bash

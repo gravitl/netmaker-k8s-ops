@@ -77,7 +77,7 @@ netclient:
   enabled: true
   image:
     repository: gravitl/netclient
-    tag: v1.2.0
+    tag: v1.4.0
     pullPolicy: Always
   token: ""  # Netmaker token - should be set via secret
   env:
