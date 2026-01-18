@@ -183,11 +183,6 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0  # Fetch all history for changelog generation
-
       - name: Extract version from tag
         id: version
         run: |
@@ -201,31 +196,70 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           
-      - name: Determine tag name
+      - name: Determine tag name and checkout ref
         id: tag_name
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             TAG_NAME="v${{ inputs.version }}"
+            CHECKOUT_REF="${{ github.ref }}"
           else
             TAG_NAME="${{ github.ref_name }}"
+            CHECKOUT_REF="${{ github.ref }}"
           fi
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "checkout_ref=$CHECKOUT_REF" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.tag_name.outputs.checkout_ref }}
+          fetch-depth: 0  # Fetch all history for changelog generation
 
       - name: Generate changelog
         id: changelog
         run: |
           TAG_NAME="${{ steps.tag_name.outputs.tag_name }}"
           
-          # Get previous tag
-          PREVIOUS_TAG=$(git tag --sort=-version:refname | sed -n '2p' || echo "")
+          # Fetch all tags to ensure we have them
+          git fetch --tags --force --quiet || true
+          
+          # Get all tags sorted by version
+          ALL_TAGS=$(git tag --sort=-version:refname)
+          
+          # Find previous tag (skip the current one)
+          PREVIOUS_TAG=""
+          SKIP_NEXT=false
+          for TAG in $ALL_TAGS; do
+            if [ "$SKIP_NEXT" = true ]; then
+              PREVIOUS_TAG="$TAG"
+              break
+            fi
+            if [ "$TAG" = "$TAG_NAME" ]; then
+              SKIP_NEXT=true
+            fi
+          done
           
           if [ -z "$PREVIOUS_TAG" ]; then
-            echo "No previous tag found, generating full changelog"
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+            echo "No previous tag found, generating full changelog up to $TAG_NAME"
+            CHANGELOG=$(git log $TAG_NAME --pretty=format:"- %s (%h)" --no-merges 2>/dev/null || echo "- Initial release")
           else
             echo "Generating changelog from $PREVIOUS_TAG to $TAG_NAME"
-            CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges || git log --pretty=format:"- %s (%h)" --no-merges -n 20)
+            # Get commits between previous tag and current tag
+            CHANGELOG=$(git log ${PREVIOUS_TAG}..${TAG_NAME} --pretty=format:"- %s (%h)" --no-merges 2>/dev/null || echo "- No changes since $PREVIOUS_TAG")
+            
+            # If changelog is empty, add a message
+            if [ -z "$CHANGELOG" ] || [ "$CHANGELOG" = "- No changes since $PREVIOUS_TAG" ]; then
+              CHANGELOG="- No commits between $PREVIOUS_TAG and $TAG_NAME"
+            fi
           fi
+          
+          # If changelog is still empty, set a default message
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="- Release ${{ steps.version.outputs.version }}"
+          fi
+          
+          echo "Generated changelog:"
+          echo "$CHANGELOG"
           
           # Save changelog (escape for GitHub Actions)
           {
@@ -236,9 +270,12 @@ jobs:
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           name: Release ${{ steps.version.outputs.version }}
           tag_name: ${{ steps.tag_name.outputs.tag_name }}
+          target_commitish: ${{ steps.tag_name.outputs.tag_name }}
           body: |
             ## What's Changed
             
@@ -259,4 +296,5 @@ jobs:
           draft: false
           prerelease: ${{ contains(steps.version.outputs.version, '-') || contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
           generate_release_notes: true
+          make_latest: ${{ !contains(steps.version.outputs.version, '-') && !contains(steps.version.outputs.version, 'alpha') && !contains(steps.version.outputs.version, 'beta') && !contains(steps.version.outputs.version, 'rc') }}
 
