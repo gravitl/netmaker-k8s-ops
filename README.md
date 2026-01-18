@@ -13,32 +13,7 @@ The Netmaker K8s Operator provides multiple features to bridge Kubernetes cluste
 
 ## Use Cases
 
-### 1. Netclient Sidecar Injection (Webhook)
-
-Automatically add WireGuard connectivity to any pod by labeling it. The webhook injects a `netclient` sidecar container that establishes a WireGuard connection to your Netmaker network.
-
-**Use Case**: Enable individual pods to connect to Netmaker networks without manual configuration.
-
-**Example**:
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-spec:
-  template:
-    metadata:
-      labels:
-        netmaker.io/netclient: "enabled"
-    spec:
-      containers:
-      - name: app
-        image: my-app:latest
-```
-
-**Documentation**: [Webhook Usage Guide](WEBHOOK_USAGE.md)
-
-### 2. Egress Proxy (Cluster Egress)
+### 1. Egress Proxy (Cluster Egress)
 
 Expose services that are external to your Kubernetes cluster but available in your Netmaker network, making them accessible to your Kubernetes workloads.
 
@@ -67,7 +42,7 @@ spec:
 
 **Documentation**: [Egress Proxy Guide](examples/EGRESS_PROXY_GUIDE.md)
 
-### 3. Ingress Proxy (Cluster Ingress)
+### 2. Ingress Proxy (Cluster Ingress)
 
 Expose Kubernetes services to devices on your Netmaker network, allowing Netmaker devices to access Kubernetes workloads.
 
@@ -98,7 +73,7 @@ spec:
 
 **Documentation**: [Ingress Proxy Guide](examples/INGRESS_PROXY_GUIDE.md)
 
-### 4. API Proxy
+### 3. API Proxy
 
 Secure reverse proxy for accessing Kubernetes API servers through WireGuard tunnels with user impersonation and RBAC support.
 
@@ -234,14 +209,13 @@ helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
 
 2. **Install with custom values**:
 ```bash
-# Install with webhook, proxy, and API configuration enabled
+# Install with  proxy, and API configuration enabled
 helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --create-namespace \
   --set image.repository=<your-registry>/netmaker-k8s-ops \
   --set image.tag=<tag> \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
-  --set webhook.enabled=true \
   --set service.proxy.enabled=true \
   --set api.enabled=true \
   --set api.serverDomain="api.example.com" \
@@ -332,35 +306,6 @@ make deploy IMG=<your-registry>/netmaker-k8s-ops:tag
 kubectl get pods -n netmaker-k8s-ops-system
 ```
 
-### Example: Enable Netclient Sidecar
-
-1. **Label a namespace** (if using webhook):
-```bash
-kubectl label namespace default netmaker.io/webhook=enabled
-```
-
-2. **Create a deployment with netclient label**:
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-spec:
-  template:
-    metadata:
-      labels:
-        netmaker.io/netclient: "enabled"
-    spec:
-      containers:
-      - name: app
-        image: nginx:latest
-```
-
-3. **Verify netclient sidecar is injected**:
-```bash
-kubectl get pod <pod-name> -o jsonpath='{.spec.containers[*].name}'
-# Should show: app netclient
-```
 
 ### Example: Egress Proxy
 
@@ -412,9 +357,9 @@ curl http://api.k8s.netmaker.internal:80
 
 ## Documentation
 
+- **[User Guide](docs/USER_GUIDE.md)** - Start here! Introduction and getting started guide for new users
 - [Deployment Guide](DEPLOYMENT_GUIDE.md) - Detailed deployment instructions
 - [Token Configuration Guide](TOKEN_CONFIGURATION.md) - How to pass Netmaker tokens (secrets, env vars, etc.)
-- [Webhook Usage](WEBHOOK_USAGE.md) - Netclient sidecar injection
 - [Egress Proxy Guide](examples/EGRESS_PROXY_GUIDE.md) - Expose Netmaker services to K8s
 - [Ingress Proxy Guide](examples/INGRESS_PROXY_GUIDE.md) - Expose K8s services to Netmaker
 - [Proxy Usage](PROXY_USAGE.md) - Kubernetes API proxy
@@ -463,14 +408,10 @@ curl http://api.k8s.netmaker.internal:80
 
 ## Features
 
-- ✅ **Automatic Sidecar Injection**: Webhook-based netclient sidecar injection
 - ✅ **Egress Proxy**: Access Netmaker services from Kubernetes
 - ✅ **Ingress Proxy**: Expose Kubernetes services to Netmaker
-- ✅ **Persistent Volumes**: Support for PVC-based netclient configuration persistence
-- ✅ **Multi-Replica Support**: Deploy operator with multiple replicas
 - ✅ **RBAC Integration**: Full Kubernetes RBAC support
-- ✅ **Health Checks**: Built-in health and readiness endpoints
-- ✅ **Dynamic Configuration**: Annotation-based configuration
+
 
 ## Uninstallation
 

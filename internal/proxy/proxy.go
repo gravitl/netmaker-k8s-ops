@@ -159,8 +159,9 @@ type ServerStatusResponse struct {
 }
 
 // CheckServerProStatus checks if the Netmaker server is a pro server
-// Returns an error if the server is not pro or if the check fails
-func CheckServerProStatus(zlog logr.Logger) error {
+// Returns (isPro bool, error) where isPro indicates if server is pro
+// and error is only returned for connection/request failures, not for "not pro" case
+func CheckServerProStatus(zlog logr.Logger) (bool, error) {
 	// Get server host from environment
 	serverHost := os.Getenv("SERVER_HOST")
 	if serverHost == "" {
@@ -169,7 +170,7 @@ func CheckServerProStatus(zlog logr.Logger) error {
 	}
 
 	if serverHost == "" {
-		return fmt.Errorf("SERVER_HOST or API_SERVER_DOMAIN environment variable must be set")
+		return false, fmt.Errorf("SERVER_HOST or API_SERVER_DOMAIN environment variable must be set")
 	}
 
 	// Build the API URL
@@ -188,7 +189,7 @@ func CheckServerProStatus(zlog logr.Logger) error {
 	// Create request
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return false, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -197,29 +198,29 @@ func CheckServerProStatus(zlog logr.Logger) error {
 	zlog.Info("Checking server pro status", "url", apiURL)
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to check server pro status: %w", err)
+		return false, fmt.Errorf("failed to check server pro status: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("server status check failed with status %d: %s", resp.StatusCode, string(body))
+		return false, fmt.Errorf("server status check failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	// Parse response
 	var statusResponse ServerStatusResponse
 	if err := json.NewDecoder(resp.Body).Decode(&statusResponse); err != nil {
-		return fmt.Errorf("failed to decode server status response: %w", err)
+		return false, fmt.Errorf("failed to decode server status response: %w", err)
 	}
 
-	// Check if server is pro
-	if !statusResponse.IsPro {
-		return fmt.Errorf("server is not a pro server (is_pro: false). This operator requires a Netmaker Pro server")
+	// Return whether server is pro (no error if check succeeded, even if not pro)
+	if statusResponse.IsPro {
+		zlog.Info("Server pro status verified", "is_pro", statusResponse.IsPro)
+	} else {
+		zlog.Info("Server pro status checked", "is_pro", statusResponse.IsPro)
 	}
-
-	zlog.Info("Server pro status verified", "is_pro", statusResponse.IsPro)
-	return nil
+	return statusResponse.IsPro, nil
 }
 
 // fetchUserMappingsFromAPI fetches user mappings from the external API

@@ -97,11 +97,21 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	// Check if server is pro before starting
+	// Check if server is pro only when proxy mode is enabled
 	logger := ctrl.Log.WithName("setup")
-	if err := proxy.CheckServerProStatus(logger); err != nil {
-		setupLog.Error(err, "Server pro status check failed")
-		os.Exit(1)
+	if proxyMode := os.Getenv("PROXY_MODE"); proxyMode != "" {
+		isPro, err := proxy.CheckServerProStatus(logger)
+		if err != nil {
+			setupLog.Error(err, "Server pro status check failed, disabling proxy mode")
+			os.Unsetenv("PROXY_MODE")
+			setupLog.Info("Proxy mode has been disabled due to server pro status check failure")
+		} else if !isPro {
+			setupLog.Info("Server is not a pro server (is_pro: false). Proxy mode requires Netmaker Pro server. Disabling proxy mode.", "original_mode", proxyMode)
+			os.Unsetenv("PROXY_MODE")
+			setupLog.Info("Proxy mode has been disabled. Operator will continue without proxy functionality.")
+		}
+	} else {
+		setupLog.Info("Proxy mode not enabled, skipping server pro status check")
 	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
@@ -240,12 +250,18 @@ func main() {
 	}
 	wg := &sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())
-	setupLog.Info("starting API server")
-	wg.Add(1)
-	go proxy.StartAPIServer(ctx, wg)
-	setupLog.Info("starting k8s proxy server")
-	wg.Add(1)
-	go proxy.StartK8sProxy(ctx, wg)
+
+	// Only start proxy servers if proxy mode is enabled
+	if proxyMode := os.Getenv("PROXY_MODE"); proxyMode != "" {
+		setupLog.Info("starting API server")
+		wg.Add(1)
+		go proxy.StartAPIServer(ctx, wg)
+		setupLog.Info("starting k8s proxy server")
+		wg.Add(1)
+		go proxy.StartK8sProxy(ctx, wg)
+	} else {
+		setupLog.Info("Proxy mode not enabled, skipping proxy server startup")
+	}
 	setupLog.Info("starting manager")
 	wg.Add(1)
 	go func() {
