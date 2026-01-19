@@ -130,8 +130,8 @@ helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --create-namespace \
   --version 1.0.0 \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
+  --set image.repository=gravitl/netmaker-k8s-ops \
+  --set image.tag=latest \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
 ```
 
@@ -140,21 +140,21 @@ helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
 ```bash
 # Basic installation with default values
 # Note: If namespace already exists, either omit --create-namespace or set namespace.create=false
-helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --create-namespace \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
+  --set image.repository=gravitl/netmaker-k8s-ops \
+  --set image.tag=latest \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
 ```
 
    **If namespace already exists**, use:
 ```bash
-helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --set namespace.create=false \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
+  --set image.repository=gravitl/netmaker-k8s-ops \
+  --set image.tag=latest \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
 ```
 
@@ -162,11 +162,11 @@ helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
 
    **Auth MODE**
 ```bash
-helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --create-namespace \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
+  --set image.repository=gravitl/netmaker-k8s-ops \
+  --set image.tag=latest \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
   --set manager.configMap.proxyMode="auth" \
   --set service.proxy.enabled=true \
@@ -176,11 +176,11 @@ helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
   --set api.syncInterval="10"
 ```
   **NOAUTH MODE**
-helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --create-namespace \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
+  --set image.repository=gravitl/netmaker-k8s-ops \
+  --set image.tag=latest \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
   --set manager.configMap.proxyMode="noauth" \
   --set service.proxy.enabled=true
@@ -218,23 +218,9 @@ helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
   --values values-custom.yaml
 ```
 
-2. **Install with custom values**:
-```bash
-# Install with  proxy, and API configuration enabled
-helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
-  --namespace netmaker-k8s-ops-system \
-  --create-namespace \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
-  --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
-  --set service.proxy.enabled=true \
-  --set api.enabled=true \
-  --set api.serverDomain="api.example.com" \
-  --set api.token="your-api-token-here" \
-  --set api.syncInterval="300"
-```
 
-3. **Using Kubernetes Secret for token** (recommended for production):
+
+2. **Using Kubernetes Secret for token** (recommended for production):
 ```bash
 # Create secret
 kubectl create secret generic netclient-token \
@@ -251,7 +237,7 @@ helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
 
    Then update the deployment to use the secret (see [Token Configuration Guide](TOKEN_CONFIGURATION.md)).
 
-4. **Verify deployment**:
+3. **Verify deployment**:
 ```bash
 kubectl get pods -n netmaker-k8s-ops-system
 helm status netmaker-k8s-ops -n netmaker-k8s-ops-system
