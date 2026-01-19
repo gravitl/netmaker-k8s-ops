@@ -10,7 +10,7 @@ metadata:
     # Enable ingress proxy functionality
     netmaker.io/ingress: "enabled"
     # Optional: Specify DNS name for this service on Netmaker network
-    netmaker.io/ingress-dns-name: "api.k8s.netmaker.internal"
+    # netmaker.io/ingress-dns-name: "api.k8s.netmaker.internal"
     # Optional: Specify Netmaker IP to bind to (defaults to WireGuard interface IP)
     # netmaker.io/ingress-bind-ip: "10.0.0.50"
     # Optional: Custom secret configuration for netclient token

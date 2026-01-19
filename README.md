@@ -27,7 +27,7 @@ metadata:
   name: netmaker-api-egress
   annotations:
     netmaker.io/egress: "enabled"
-    netmaker.io/egress-target-dns: "api.netmaker.internal"
+    netmaker.io/egress-target-ip: "100.93.135.2"
 spec:
   ports:
   - port: 80
@@ -56,7 +56,6 @@ metadata:
   name: my-api-ingress
   annotations:
     netmaker.io/ingress: "enabled"
-    netmaker.io/ingress-dns-name: "api.k8s.netmaker.internal"
 spec:
   ports:
   - port: 80
