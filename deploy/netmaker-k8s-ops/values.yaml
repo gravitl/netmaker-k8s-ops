@@ -107,7 +107,7 @@ webhook:
 service:
   # Webhook service
   webhook:
-    enabled: true
+    enabled: false
     type: ClusterIP
     port: 443
     targetPort: 9443

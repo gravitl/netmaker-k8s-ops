@@ -159,7 +159,9 @@ helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
 ```
 
-   **With API configuration** (set API values via --set, creates ConfigMap):
+   **With K8s Proxy configuration (PRO netmaker server needed)** (need netmaker API integration in auth mode for users sync):
+
+   **Auth MODE**
 ```bash
 helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
@@ -167,12 +169,23 @@ helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
   --set image.repository=<your-registry>/netmaker-k8s-ops \
   --set image.tag=<tag> \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
+  --set manager.configMap.proxyMode="auth" \
+  --set service.proxy.enabled=true \
   --set api.enabled=true \
   --set api.serverDomain="api.example.com" \
   --set api.token="your-api-token-here" \
-  --set api.syncInterval="300"
+  --set api.syncInterval="10"
 ```
-
+  **NOAUTH MODE**
+helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+  --namespace netmaker-k8s-ops-system \
+  --create-namespace \
+  --set image.repository=<your-registry>/netmaker-k8s-ops \
+  --set image.tag=<tag> \
+  --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
+  --set manager.configMap.proxyMode="noauth" \
+  --set service.proxy.enabled=true
+```
    **Or using a values file** (for better organization):
 ```bash
 # Create a values file (values-custom.yaml)

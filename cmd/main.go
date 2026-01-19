@@ -106,9 +106,14 @@ func main() {
 			os.Unsetenv("PROXY_MODE")
 			setupLog.Info("Proxy mode has been disabled due to server pro status check failure")
 		} else if !isPro {
-			setupLog.Info("Server is not a pro server (is_pro: false). Proxy mode requires Netmaker Pro server. Disabling proxy mode.", "original_mode", proxyMode)
-			os.Unsetenv("PROXY_MODE")
-			setupLog.Info("Proxy mode has been disabled. Operator will continue without proxy functionality.")
+			// If server is not pro and proxy mode is enabled, switch to noauth mode
+			if proxyMode == "auth" {
+				setupLog.Info("Server is not a pro server (is_pro: false). Auth mode requires Netmaker Pro server. Switching to noauth mode.", "original_mode", proxyMode)
+				os.Setenv("PROXY_MODE", "noauth")
+				setupLog.Info("Proxy mode set to noauth. Operator will continue with proxy in noauth mode.")
+			} else {
+				setupLog.Info("Server is not a pro server (is_pro: false). Proxy mode is already set to noauth, continuing with noauth mode.", "proxy_mode", proxyMode)
+			}
 		}
 	} else {
 		setupLog.Info("Proxy mode not enabled, skipping server pro status check")
