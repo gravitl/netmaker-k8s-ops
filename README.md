@@ -6,7 +6,6 @@ A Kubernetes operator that seamlessly integrates Netmaker WireGuard networks wit
 
 The Netmaker K8s Operator provides multiple features to bridge Kubernetes clusters with Netmaker WireGuard networks:
 
-- **Netclient Sidecar Injection**: Automatically injects WireGuard netclient sidecars into pods
 - **Egress Proxy**: Expose Netmaker services to Kubernetes cluster workloads
 - **Ingress Proxy**: Expose Kubernetes services to Netmaker network devices
 - **API Proxy**: Secure access to Kubernetes API through WireGuard tunnels
