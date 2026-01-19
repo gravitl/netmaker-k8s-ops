@@ -286,7 +286,7 @@ func (w *NetclientSidecarWebhook) addNetclientSidecar(pod *corev1.Pod, labels ma
 // addNetclientSidecarToPodTemplate adds the netclient sidecar to a pod template spec
 func (w *NetclientSidecarWebhook) addNetclientSidecarToPodTemplate(podSpec *corev1.PodSpec, labels map[string]string, annotations map[string]string, namespace string) {
 	// Get netclient configuration from environment variables or use defaults
-	netclientImage := getEnvOrDefault("NETCLIENT_IMAGE", "gravitl/netclient:v1.1.0")
+	netclientImage := getEnvOrDefault("NETCLIENT_IMAGE", "gravitl/netclient:v1.4.0")
 	netclientServer := getEnvOrDefault("NETCLIENT_SERVER", "")
 	netclientNetwork := getEnvOrDefault("NETCLIENT_NETWORK", "")
 

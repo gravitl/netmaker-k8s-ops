@@ -6,39 +6,13 @@ A Kubernetes operator that seamlessly integrates Netmaker WireGuard networks wit
 
 The Netmaker K8s Operator provides multiple features to bridge Kubernetes clusters with Netmaker WireGuard networks:
 
-- **Netclient Sidecar Injection**: Automatically injects WireGuard netclient sidecars into pods
 - **Egress Proxy**: Expose Netmaker services to Kubernetes cluster workloads
 - **Ingress Proxy**: Expose Kubernetes services to Netmaker network devices
 - **API Proxy**: Secure access to Kubernetes API through WireGuard tunnels
 
 ## Use Cases
 
-### 1. Netclient Sidecar Injection (Webhook)
-
-Automatically add WireGuard connectivity to any pod by labeling it. The webhook injects a `netclient` sidecar container that establishes a WireGuard connection to your Netmaker network.
-
-**Use Case**: Enable individual pods to connect to Netmaker networks without manual configuration.
-
-**Example**:
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-spec:
-  template:
-    metadata:
-      labels:
-        netmaker.io/netclient: "enabled"
-    spec:
-      containers:
-      - name: app
-        image: my-app:latest
-```
-
-**Documentation**: [Webhook Usage Guide](WEBHOOK_USAGE.md)
-
-### 2. Egress Proxy (Cluster Egress)
+### 1. Egress Proxy (Cluster Egress)
 
 Expose services that are external to your Kubernetes cluster but available in your Netmaker network, making them accessible to your Kubernetes workloads.
 
@@ -52,7 +26,7 @@ metadata:
   name: netmaker-api-egress
   annotations:
     netmaker.io/egress: "enabled"
-    netmaker.io/egress-target-dns: "api.netmaker.internal"
+    netmaker.io/egress-target-ip: "100.93.135.2"
 spec:
   ports:
   - port: 80
@@ -67,7 +41,7 @@ spec:
 
 **Documentation**: [Egress Proxy Guide](examples/EGRESS_PROXY_GUIDE.md)
 
-### 3. Ingress Proxy (Cluster Ingress)
+### 2. Ingress Proxy (Cluster Ingress)
 
 Expose Kubernetes services to devices on your Netmaker network, allowing Netmaker devices to access Kubernetes workloads.
 
@@ -81,7 +55,6 @@ metadata:
   name: my-api-ingress
   annotations:
     netmaker.io/ingress: "enabled"
-    netmaker.io/ingress-dns-name: "api.k8s.netmaker.internal"
 spec:
   ports:
   - port: 80
@@ -98,7 +71,7 @@ spec:
 
 **Documentation**: [Ingress Proxy Guide](examples/INGRESS_PROXY_GUIDE.md)
 
-### 4. API Proxy
+### 3. API Proxy
 
 Secure reverse proxy for accessing Kubernetes API servers through WireGuard tunnels with user impersonation and RBAC support.
 
@@ -149,7 +122,7 @@ Netmaker Device → WireGuard → Ingress Proxy Pod → K8s Service → K8s Pod
 **Install from Helm repository (recommended):**
 ```bash
 # Add the Helm repository (replace with your DigitalOcean Spaces endpoint)
-helm repo add netmaker-k8s-ops https://YOUR-SPACES-REGION.digitaloceanspaces.com/YOUR-BUCKET-NAME/
+helm repo add netmaker-k8s-ops https://downloads.netmaker.io/charts/
 helm repo update
 
 # Install the chart
@@ -157,49 +130,61 @@ helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --create-namespace \
   --version 1.0.0 \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
+  --set image.repository=gravitl/netmaker-k8s-ops \
+  --set image.tag=latest \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
 ```
 
-**Note**: Replace `YOUR-SPACES-REGION` and `YOUR-BUCKET-NAME` with your actual DigitalOcean Spaces configuration.
 
 **Or install from local chart:**
 ```bash
 # Basic installation with default values
 # Note: If namespace already exists, either omit --create-namespace or set namespace.create=false
-helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --create-namespace \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
+  --set image.repository=gravitl/netmaker-k8s-ops \
+  --set image.tag=latest \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
 ```
 
    **If namespace already exists**, use:
 ```bash
-helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --set namespace.create=false \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
+  --set image.repository=gravitl/netmaker-k8s-ops \
+  --set image.tag=latest \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE"
 ```
 
-   **With API configuration** (set API values via --set, creates ConfigMap):
+   **With K8s Proxy configuration (PRO netmaker server needed)** (need netmaker API integration in auth mode for users sync):
+
+   **Auth MODE**
 ```bash
-helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
+helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --create-namespace \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
+  --set image.repository=gravitl/netmaker-k8s-ops \
+  --set image.tag=latest \
   --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
+  --set manager.configMap.proxyMode="auth" \
+  --set service.proxy.enabled=true \
   --set api.enabled=true \
   --set api.serverDomain="api.example.com" \
   --set api.token="your-api-token-here" \
-  --set api.syncInterval="300"
+  --set api.syncInterval="10"
 ```
-
+  **NOAUTH MODE**
+helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
+  --namespace netmaker-k8s-ops-system \
+  --create-namespace \
+  --set image.repository=gravitl/netmaker-k8s-ops \
+  --set image.tag=latest \
+  --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
+  --set manager.configMap.proxyMode="noauth" \
+  --set service.proxy.enabled=true
+```
    **Or using a values file** (for better organization):
 ```bash
 # Create a values file (values-custom.yaml)
@@ -233,24 +218,9 @@ helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
   --values values-custom.yaml
 ```
 
-2. **Install with custom values**:
-```bash
-# Install with webhook, proxy, and API configuration enabled
-helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
-  --namespace netmaker-k8s-ops-system \
-  --create-namespace \
-  --set image.repository=<your-registry>/netmaker-k8s-ops \
-  --set image.tag=<tag> \
-  --set netclient.token="YOUR_NETMAKER_TOKEN_HERE" \
-  --set webhook.enabled=true \
-  --set service.proxy.enabled=true \
-  --set api.enabled=true \
-  --set api.serverDomain="api.example.com" \
-  --set api.token="your-api-token-here" \
-  --set api.syncInterval="300"
-```
 
-3. **Using Kubernetes Secret for token** (recommended for production):
+
+2. **Using Kubernetes Secret for token** (recommended for production):
 ```bash
 # Create secret
 kubectl create secret generic netclient-token \
@@ -267,7 +237,7 @@ helm install netmaker-k8s-ops ./deploy/netmaker-k8s-ops \
 
    Then update the deployment to use the secret (see [Token Configuration Guide](TOKEN_CONFIGURATION.md)).
 
-4. **Verify deployment**:
+3. **Verify deployment**:
 ```bash
 kubectl get pods -n netmaker-k8s-ops-system
 helm status netmaker-k8s-ops -n netmaker-k8s-ops-system
@@ -333,35 +303,6 @@ make deploy IMG=<your-registry>/netmaker-k8s-ops:tag
 kubectl get pods -n netmaker-k8s-ops-system
 ```
 
-### Example: Enable Netclient Sidecar
-
-1. **Label a namespace** (if using webhook):
-```bash
-kubectl label namespace default netmaker.io/webhook=enabled
-```
-
-2. **Create a deployment with netclient label**:
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-spec:
-  template:
-    metadata:
-      labels:
-        netmaker.io/netclient: "enabled"
-    spec:
-      containers:
-      - name: app
-        image: nginx:latest
-```
-
-3. **Verify netclient sidecar is injected**:
-```bash
-kubectl get pod <pod-name> -o jsonpath='{.spec.containers[*].name}'
-# Should show: app netclient
-```
 
 ### Example: Egress Proxy
 
@@ -413,14 +354,11 @@ curl http://api.k8s.netmaker.internal:80
 
 ## Documentation
 
-- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Detailed deployment instructions
+- **[User Guide](docs/USER_GUIDE.md)** - Start here! Introduction and getting started guide for new users
 - [Token Configuration Guide](TOKEN_CONFIGURATION.md) - How to pass Netmaker tokens (secrets, env vars, etc.)
-- [Webhook Usage](WEBHOOK_USAGE.md) - Netclient sidecar injection
 - [Egress Proxy Guide](examples/EGRESS_PROXY_GUIDE.md) - Expose Netmaker services to K8s
 - [Ingress Proxy Guide](examples/INGRESS_PROXY_GUIDE.md) - Expose K8s services to Netmaker
-- [Proxy Usage](PROXY_USAGE.md) - Kubernetes API proxy
-- [WireGuard Setup](WIREGUARD_SETUP.md) - WireGuard configuration
-- [Testing Guide](TESTING_GUIDE.md) - Testing and validation
+- [Contributing Guide](CONTRIBUTING.md) - Guidelines for contributing to the project
 
 ## Architecture
 
@@ -464,14 +402,10 @@ curl http://api.k8s.netmaker.internal:80
 
 ## Features
 
-- ✅ **Automatic Sidecar Injection**: Webhook-based netclient sidecar injection
 - ✅ **Egress Proxy**: Access Netmaker services from Kubernetes
 - ✅ **Ingress Proxy**: Expose Kubernetes services to Netmaker
-- ✅ **Persistent Volumes**: Support for PVC-based netclient configuration persistence
-- ✅ **Multi-Replica Support**: Deploy operator with multiple replicas
 - ✅ **RBAC Integration**: Full Kubernetes RBAC support
-- ✅ **Health Checks**: Built-in health and readiness endpoints
-- ✅ **Dynamic Configuration**: Annotation-based configuration
+
 
 ## Uninstallation
 
@@ -568,7 +502,7 @@ make undeploy
 
 ## Project Distribution
 
-Following are the steps to build the installer and distribute this project to users.
+Following are the steps to build the installer and distribute this project.
 
 1. Build the installer for the image built and published in the registry:
 
@@ -589,16 +523,25 @@ Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project
 kubectl apply -f https://raw.githubusercontent.com/<org>/netmaker-k8s-ops/<tag or branch>/dist/install.yaml
 ```
 
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
 **NOTE:** Run `make help` for more information on all potential `make` targets
 
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
 
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+
+- How to get started with development
+- Code style and conventions
+- Testing requirements
+- Pull request process
+- And more!
+
+Contributions of all kinds are appreciated - code, documentation, bug reports, feature requests, and feedback.
+
 ## License
 
-Copyright 2025.
+Copyright 2025 Netmaker, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -611,4 +554,6 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+See the [LICENSE](LICENSE) file for the full license text.
 

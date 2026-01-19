@@ -109,7 +109,10 @@ spec:
           env:
             {{- if .Values.netclient.token }}
             - name: TOKEN
-              value: {{ .Values.netclient.token | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: netclient-token
+                  key: token
             {{- end }}
             {{- range .Values.netclient.env }}
             - name: {{ .name }}

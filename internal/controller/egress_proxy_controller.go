@@ -147,7 +147,7 @@ func (r *EgressProxyReconciler) ensureProxyPod(ctx context.Context, service *cor
 // Target ports are read from Service spec's targetPort (standard Kubernetes way)
 func (r *EgressProxyReconciler) buildProxyPod(ctx context.Context, service *corev1.Service, podName string, targetIP, targetDNS string) *corev1.Pod {
 	// Get configuration from environment or use defaults
-	netclientImage := getEnvOrDefault("NETCLIENT_IMAGE", "gravitl/netclient:v1.2.0")
+	netclientImage := getEnvOrDefault("NETCLIENT_IMAGE", "gravitl/netclient:v1.4.0")
 	// Try to get token from secret first (checks Service annotations), fallback to environment variable
 	netclientToken := r.getNetclientToken(ctx, service)
 	// Use socat for simple TCP forwarding - much lighter than nginx
