@@ -356,6 +356,8 @@ curl http://api.k8s.netmaker.internal:80
 
 - **[User Guide](docs/USER_GUIDE.md)** - Start here! Introduction and getting started guide for new users
 - [Token Configuration Guide](TOKEN_CONFIGURATION.md) - How to pass Netmaker tokens (secrets, env vars, etc.)
+- [Proxy Usage Guide](PROXY_USAGE.md) - Kubernetes API proxy configuration and usage
+- [Proxy Authentication Modes](PROXY_AUTH_MODES.md) - Detailed authentication mode configuration
 - [Egress Proxy Guide](examples/EGRESS_PROXY_GUIDE.md) - Expose Netmaker services to K8s
 - [Ingress Proxy Guide](examples/INGRESS_PROXY_GUIDE.md) - Expose K8s services to Netmaker
 - [Contributing Guide](CONTRIBUTING.md) - Guidelines for contributing to the project
