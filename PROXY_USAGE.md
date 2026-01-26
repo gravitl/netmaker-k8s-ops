@@ -127,10 +127,9 @@ In auth mode, requests from WireGuard peers are impersonated using configured us
 
 **RBAC Setup Required:**
 ```yaml
-apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: wireguard-peer
+  name: user-role
 rules:
 - apiGroups: [""]
   resources: ["pods", "services"]
@@ -139,14 +138,17 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: wireguard-peer
+  name: user-role-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: wireguard-peer
+  name: user-role
 subjects:
 - kind: User
-  name: wireguard-peer
+  name: bob
+  apiGroup: rbac.authorization.k8s.io
+- kind: Group
+  name: dev
   apiGroup: rbac.authorization.k8s.io
 ```
 
