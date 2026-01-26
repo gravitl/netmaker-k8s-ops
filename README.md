@@ -176,6 +176,7 @@ helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --set api.syncInterval="10"
 ```
   **NOAUTH MODE**
+```
 helm install netmaker-k8s-ops netmaker-k8s-ops/netmaker-k8s-ops \
   --namespace netmaker-k8s-ops-system \
   --create-namespace \
